@@ -1,0 +1,192 @@
+/* TaskNotes Workspace Agenda — uses Obsidian theme variables, so it inherits the active theme. */
+
+/* the standalone workspace pane */
+.fw-agenda-view { padding: 16px 14px; overflow-y: auto; }
+
+.fw-agenda {
+  width: 100%;
+  font-family: var(--font-interface);
+  color: var(--text-normal);
+}
+
+/* header — more air between the date line and the title */
+.fw-agenda__dateline {
+  text-align: center;
+  font-size: 14px;
+  color: var(--text-muted);
+  margin: 8px 0 15px;
+  font-weight: 700;
+}
+.fw-agenda__dateline .fw-sep { margin: 0 7px; opacity: 0.5; }
+
+.fw-agenda__title {
+  text-align: center;
+  font-size: 23px;
+  font-weight: 700;
+  color: var(--text-normal);
+  margin-bottom: 20px;
+}
+
+/* stat tiles — colored, clickable, active on select */
+.fw-agenda__stats {
+  display: flex;
+  gap: 8px;
+  margin-bottom: 15px;
+}
+.fw-stat {
+  flex: 1;
+  border: 1px solid var(--background-modifier-border);
+  border-radius: 10px;
+  padding: 9px 4px;
+  text-align: center;
+  cursor: pointer;
+  transition: transform 100ms ease, box-shadow 100ms ease, filter 100ms ease;
+}
+.fw-stat:hover { transform: translateY(-1px); filter: brightness(1.08); }
+.fw-stat.is-active { box-shadow: 0 0 0 2px var(--interactive-accent); }
+.fw-stat__num { font-size: 22px; font-weight: 600; line-height: 1.1; }
+.fw-stat__label { font-size: 12px; color: var(--text-muted); }
+
+/* default tint per tile — the % is the knob; green needs more since it fights the green bg */
+.fw-stat--todo {
+  background: var(--background-secondary);
+  background: color-mix(in srgb, var(--color-green, #7aa06a) 30%, var(--background-secondary));
+}
+.fw-stat--todo .fw-stat__num { color: var(--color-green, #7aa06a); }
+.fw-stat--overdue {
+  background: var(--background-secondary);
+  background: color-mix(in srgb, var(--color-red, #cc5a5a) 24%, var(--background-secondary));
+}
+.fw-stat--overdue .fw-stat__num { color: var(--color-red, #cc5a5a); }
+.fw-stat--unplanned {
+  background: var(--background-secondary);
+  background: color-mix(in srgb, var(--color-yellow, #e8c07d) 22%, var(--background-secondary));
+}
+.fw-stat--unplanned .fw-stat__num { color: var(--color-yellow, #e8c07d); }
+
+/* new-task input */
+.fw-agenda__input {
+  background: var(--background-secondary);
+  border: 1px solid var(--background-modifier-border);
+  border-radius: 10px;
+  padding: 9px 12px;
+  margin-bottom: 20px;
+}
+.fw-agenda__input-label { font-size: 12px; color: var(--text-muted); margin-bottom: 3px; }
+.fw-agenda__input-row { display: flex; align-items: center; gap: 8px; }
+.fw-agenda__input-enter {
+  display: flex;
+  align-items: center;
+  flex-shrink: 0;
+  color: var(--text-muted);
+  cursor: pointer;
+  padding: 3px;
+  border-radius: 6px;
+}
+.fw-agenda__input-enter:hover { color: var(--text-normal); background: var(--background-modifier-hover); }
+.fw-agenda__input-enter svg { width: 16px; height: 16px; }
+.fw-agenda__input-field {
+  flex: 1;
+  background: transparent;
+  border: none;
+  outline: none;
+  box-shadow: none;
+  padding: 0;
+  height: auto;
+  font-size: 15px;
+  color: var(--text-normal);
+}
+.fw-agenda__input-field::placeholder { color: var(--text-faint); }
+
+/* day / section headers */
+.fw-agenda__dayhead {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin: 18px 0 9px;
+  padding-bottom: 6px;
+  border-bottom: 1px solid var(--background-modifier-border);
+  cursor: pointer;
+}
+.fw-agenda__dayhead-left { display: flex; align-items: center; gap: 3px; }
+.fw-agenda__chevron {
+  display: inline-flex;
+  align-items: center;
+  color: var(--text-muted);
+  transition: transform 120ms ease;
+}
+.fw-agenda__chevron svg { width: 15px; height: 15px; }
+.fw-agenda__dayhead.is-collapsed .fw-agenda__chevron { transform: rotate(-90deg); }
+.fw-agenda__dayhead-label {
+  font-size: 15px;
+  font-weight: 600;
+  color: var(--color-green, var(--text-accent));
+  letter-spacing: 0.01em;
+}
+.fw-agenda__dayhead--overdue .fw-agenda__dayhead-label { color: var(--color-red, #cc5a5a); }
+.fw-agenda__dayhead-count { font-size: 12px; color: var(--text-muted); }
+
+/* task rows */
+.fw-task {
+  display: flex;
+  gap: 10px;
+  padding: 6px 6px;
+  border-radius: 8px;
+  transition: background 120ms ease;
+}
+.fw-task:hover { background: var(--background-modifier-hover); }
+
+.fw-task__dots {
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding-top: 2px;
+  height: fit-content;
+}
+.fw-task__status {
+  width: 17px;
+  height: 17px;
+  border-radius: 50%;
+  border: 2px solid #808080;
+  cursor: pointer;
+  transition: background 120ms ease;
+}
+.fw-task__status:hover { background: var(--background-modifier-border); }
+.fw-task__priority {
+  width: 9px;
+  height: 9px;
+  border-radius: 50%;
+  background: #cccccc;
+}
+
+.fw-task__title {
+  font-size: 15px;
+  line-height: 1.35;
+  color: var(--text-normal);
+  cursor: pointer;
+}
+.fw-task__title:hover { color: var(--text-accent); text-decoration: underline; }
+
+.fw-task__meta {
+  font-size: 12px;
+  line-height: 1.4;
+  color: var(--text-muted);
+  margin-top: 3px;
+}
+.fw-task__meta .fw-sep { margin: 0 4px; opacity: 0.5; }
+.fw-task__meta-key { color: var(--text-faint); }
+.fw-task__tag {
+  background: var(--background-modifier-border);
+  color: var(--text-muted);
+  border-radius: 5px;
+  padding: 1px 6px;
+  font-size: 12px;
+}
+
+.fw-agenda__empty {
+  color: var(--text-muted);
+  font-size: 14px;
+  padding: 14px 0;
+  text-align: center;
+}

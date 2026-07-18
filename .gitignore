@@ -1,0 +1,9 @@
+# macOS / editors
+.DS_Store
+*.log
+
+# node (not needed — this is a no-build plugin — but ignored if you add tooling)
+node_modules/
+
+# local plugin data (runtime settings, not source)
+data.json
