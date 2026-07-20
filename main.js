@@ -249,10 +249,10 @@ class AgendaController {
     } else if (this.filter === 'overdue') {
       overdue.length ? this.renderSection(root, 'Overdue', overdue, cfg, true) : this.empty(root, 'Nothing overdue.');
     } else if (this.filter === 'unplanned') {
-      unplanned.length ? this.renderSection(root, 'Unplanned', unplanned, cfg, false) : this.empty(root, 'No unplanned tasks.');
+      unplanned.length ? this.renderSection(root, 'Unplanned', unplanned, cfg, false, true) : this.empty(root, 'No unplanned tasks.');
     } else {
       let any = false;
-      if (unplanned.length) { this.renderSection(root, 'Unplanned', unplanned, cfg, false); any = true; }
+      if (unplanned.length) { this.renderSection(root, 'Unplanned', unplanned, cfg, false, true); any = true; }
       if (overdue.length) { this.renderSection(root, 'Overdue', overdue, cfg, true); any = true; }
       for (let i = 0; i < this.opts.days; i++) {
         const day = today.clone().add(i, 'days');
@@ -265,10 +265,10 @@ class AgendaController {
     }
   }
 
-  renderSection(root, label, items, cfg, isOverdue) {
+  renderSection(root, label, items, cfg, isOverdue, isUnplanned) {
     const collapsed = this.collapsed.has(label);
     const head = root.createDiv({
-      cls: 'fw-agenda__dayhead' + (isOverdue ? ' fw-agenda__dayhead--overdue' : '') + (collapsed ? ' is-collapsed' : ''),
+      cls: 'fw-agenda__dayhead' + (isOverdue ? ' fw-agenda__dayhead--overdue' : '') + (isUnplanned ? ' fw-agenda__dayhead--unplanned' : '') + (collapsed ? ' is-collapsed' : ''),
     });
     const left = head.createDiv({ cls: 'fw-agenda__dayhead-left' });
     setIcon(left.createSpan({ cls: 'fw-agenda__chevron' }), 'chevron-down');
