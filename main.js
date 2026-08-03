@@ -9,7 +9,7 @@ const VIEW_TYPE_AGENDA = 'tasknotes-agenda-view';
 // Fallbacks — used only if TaskNotes settings can't be read at runtime.
 const DEFAULT_FIELDS = {
   title: 'title', status: 'status', priority: 'priority', due: 'due',
-  scheduled: 'scheduled', completedDate: 'completedDate',
+  scheduled: 'scheduled', completedDate: 'completedDate', projects: 'projects',
   dateCreated: 'dateCreated', dateModified: 'dateModified', archiveTag: 'archived',
 };
 const DEFAULT_STATUSES = [
@@ -39,6 +39,33 @@ function collectTags(fm, cache) {
   }
   if (cache && cache.tags) cache.tags.forEach((x) => add(x.tag));
   return tags;
+}
+
+// Task tag first so it stays anchored where it has always been; extra tags follow it.
+function orderTags(tags, taskTag) {
+  const rest = [...tags].filter((t) => t !== taskTag);
+  return tags.has(taskTag) ? [taskTag, ...rest] : rest;
+}
+
+// TaskNotes stores projects as wikilinks ("[[Note]]", "[[path/Note|Alias]]") or
+// markdown links; we only want the display name.
+function linkText(v) {
+  if (v == null) return null;
+  let s = String(v).trim();
+  if (!s) return null;
+  const wiki = s.match(/^\[\[([^\]]+)\]\]$/);
+  if (wiki) s = wiki[1].split('|').pop();
+  else {
+    const md = s.match(/^\[([^\]]*)\]\(([^)]+)\)$/);
+    if (md) s = md[1] || decodeURIComponent(md[2]);
+  }
+  s = s.trim().split('/').pop().replace(/\.md$/i, '');
+  return s || null;
+}
+
+function linkNames(v) {
+  if (v == null) return [];
+  return (Array.isArray(v) ? v : [v]).map(linkText).filter(Boolean);
 }
 
 function normDate(v) {
@@ -112,7 +139,8 @@ module.exports = class TaskNotesAgendaWrapper extends Plugin {
       const cache = this.app.metadataCache.getFileCache(f);
       if (!cache) continue;
       const fm = cache.frontmatter || {};
-      if (!collectTags(fm, cache).has(cfg.taskTag)) continue;
+      const tags = collectTags(fm, cache);
+      if (!tags.has(cfg.taskTag)) continue;
       const F = cfg.fields;
       if (fm[F.archiveTag]) continue;
       const status = fm[F.status] || cfg.defaultStatus;
@@ -123,6 +151,8 @@ module.exports = class TaskNotesAgendaWrapper extends Plugin {
         priority: fm[F.priority] || 'none',
         due: normDate(fm[F.due]),
         scheduled: normDate(fm[F.scheduled]),
+        projects: linkNames(fm[F.projects]),
+        tags: orderTags(tags, cfg.taskTag),
         done: !!(cfg.statusMap[status] && cfg.statusMap[status].isCompleted),
       });
     }
@@ -138,6 +168,56 @@ module.exports = class TaskNotesAgendaWrapper extends Plugin {
       else delete fm[F.completedDate];
       fm[F.dateModified] = moment().format();
     });
+  }
+
+  // Hand off to TaskNotes' own creation modal (full field editor + NLP parsing),
+  // seeded with whatever was already typed. Returns false if TaskNotes isn't loaded.
+  openNativeCreator(rawTitle) {
+    const tn = this.app.plugins.plugins.tasknotes;
+    const text = (rawTitle || '').trim();
+    if (!tn || typeof tn.openTaskCreationModal !== 'function') {
+      if (this.app.commands.executeCommandById('tasknotes:create-new-task')) return true;
+      new Notice('TaskNotes is not available.');
+      return false;
+    }
+    // With natural-language input on, the modal's primary field is the NL editor and
+    // TaskNotes skips parsing it whenever a title is already set — so seed the editor
+    // instead of prePopulatedValues.title, or "tomorrow at 3pm" would never parse.
+    const nlp = !!(tn.settings && tn.settings.enableNaturalLanguageInput);
+    tn.openTaskCreationModal(!nlp && text ? { title: text } : {});
+    if (nlp && text) this.seedNativeCreator(text);
+    return true;
+  }
+
+  // The modal builds its editor asynchronously, so poll briefly for it.
+  seedNativeCreator(text, tries = 0) {
+    const host = document.querySelector('.tn-task-modal__markdown-editor--nlp, .nl-input-container');
+    const cm = host && host.querySelector('.cm-content');
+    const plain = host && host.querySelector('input, textarea');
+    if (!cm && !plain) {
+      if (tries < 40) window.setTimeout(() => this.seedNativeCreator(text, tries + 1), 25);
+      return;
+    }
+    if (plain && !cm) {
+      plain.value = text;
+      plain.dispatchEvent(new Event('input', { bubbles: true }));
+      plain.focus();
+      return;
+    }
+    // Preferred path: drive CodeMirror directly so its own change pipeline runs.
+    const view = cm.cmView && cm.cmView.view;
+    if (view && view.dispatch) {
+      view.dispatch({
+        changes: { from: 0, to: view.state.doc.length, insert: text },
+        selection: { anchor: text.length },
+      });
+      view.focus();
+      return;
+    }
+    // Fallback: type it in for real, which CodeMirror picks up via beforeinput.
+    cm.focus();
+    document.execCommand('selectAll', false, null);
+    document.execCommand('insertText', false, text);
   }
 
   async createTask(rawTitle, cfg) {
@@ -228,7 +308,13 @@ class AgendaController {
 
     // new-task input
     const inputWrap = root.createDiv({ cls: 'fw-agenda__input' });
-    inputWrap.createDiv({ cls: 'fw-agenda__input-label', text: 'New task' });
+    const inputHead = inputWrap.createDiv({ cls: 'fw-agenda__input-head' });
+    inputHead.createDiv({ cls: 'fw-agenda__input-label', text: 'New task' });
+    const advBtn = inputHead.createDiv({
+      cls: 'fw-agenda__input-advanced',
+      attr: { 'aria-label': 'More options — open the TaskNotes task creator' },
+    });
+    setIcon(advBtn, 'chevron-down');
     const inputRow = inputWrap.createDiv({ cls: 'fw-agenda__input-row' });
     const input = inputRow.createEl('input', { cls: 'fw-agenda__input-field', attr: { type: 'text', placeholder: 'Enter your task here' } });
     const submit = async () => {
@@ -242,6 +328,13 @@ class AgendaController {
     const enterBtn = inputRow.createDiv({ cls: 'fw-agenda__input-enter', attr: { 'aria-label': 'Add task' } });
     setIcon(enterBtn, 'corner-down-left');
     enterBtn.addEventListener('click', submit);
+    // Copied, not moved: cancelling the modal must not cost you the typed draft.
+    // Saving instead touches the metadata cache, and that refresh rebuilds this
+    // input empty — so the draft clears itself only when a task actually lands.
+    advBtn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      this.plugin.openNativeCreator(input.value);
+    });
 
     // list — filtered by the active tile, or the full agenda
     if (this.filter === 'todo') {
@@ -318,7 +411,8 @@ class AgendaController {
     if (task.priority && task.priority !== 'none') {
       part('priority', (cfg.prioMap[task.priority] && cfg.prioMap[task.priority].label) || task.priority);
     }
-    meta.createSpan({ cls: 'fw-task__tag', text: cfg.taskTag });
+    if (task.projects.length) part('file', task.projects.join(', '));
+    for (const tag of task.tags) meta.createSpan({ cls: 'fw-task__tag', text: tag });
   }
 }
 

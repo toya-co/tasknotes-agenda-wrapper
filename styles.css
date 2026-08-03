@@ -48,16 +48,16 @@ body.theme-dark.forest-theme-light .fw-agenda {
 .fw-stat {
   flex: 1;
   border: 1px solid var(--background-modifier-border);
-  border-radius: 10px;
-  padding: 9px 4px;
+  border-radius: 9px;
+  padding: 6px 4px;
   text-align: center;
   cursor: pointer;
   transition: transform 100ms ease, box-shadow 100ms ease, filter 100ms ease;
 }
 .fw-stat:hover { transform: translateY(-1px); filter: brightness(1.08); }
 .fw-stat.is-active { box-shadow: 0 0 0 2px var(--interactive-accent); }
-.fw-stat__num { font-size: 22px; font-weight: 600; line-height: 1.1; }
-.fw-stat__label { font-size: 12px; color: var(--text-muted); }
+.fw-stat__num { font-size: 19px; font-weight: 600; line-height: 1.1; }
+.fw-stat__label { font-size: 11px; color: var(--text-muted); }
 
 /* default tint per tile — the % is the knob; green needs more since it fights the green bg */
 .fw-stat--todo {
@@ -84,7 +84,23 @@ body.theme-dark.forest-theme-light .fw-agenda {
   padding: 9px 12px;
   margin-bottom: 20px;
 }
-.fw-agenda__input-label { font-size: 12px; color: var(--text-muted); margin-bottom: 3px; }
+.fw-agenda__input-head {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  margin-bottom: 3px;
+}
+.fw-agenda__input-label { font-size: 12px; color: var(--text-muted); }
+.fw-agenda__input-advanced {
+  display: flex;
+  align-items: center;
+  color: var(--text-muted);
+  cursor: pointer;
+  padding: 1px 3px;
+  border-radius: 5px;
+}
+.fw-agenda__input-advanced:hover { color: var(--text-normal); background: var(--background-modifier-hover); }
+.fw-agenda__input-advanced svg { width: 14px; height: 14px; }
 .fw-agenda__input-row { display: flex; align-items: center; gap: 8px; }
 .fw-agenda__input-enter {
   display: flex;
@@ -187,7 +203,16 @@ body.theme-dark.forest-theme-light .fw-agenda {
   color: var(--text-muted);
   margin-top: 3px;
 }
-.fw-task__meta .fw-sep { margin: 0 4px; opacity: 0.5; }
+/* separators sit a step above the muted text they divide, so the sections read apart */
+.fw-task__meta .fw-sep {
+  margin: 0 4px;
+  opacity: 0.95;
+  color: var(--text-normal);
+  font-size: 15px;      /* size knob — inherits 12px from the meta row otherwise */
+  line-height: 0;       /* keeps the taller glyph from stretching the row */
+  position: relative;
+  top: 1px;             /* centering knob: the dot rides higher as it scales, so push it back down */
+}
 .fw-task__meta-key { color: var(--text-faint); }
 .fw-task__tag {
   background: var(--background-modifier-border);
@@ -196,6 +221,7 @@ body.theme-dark.forest-theme-light .fw-agenda {
   padding: 1px 6px;
   font-size: 12px;
 }
+.fw-task__tag + .fw-task__tag { margin-left: 4px; }
 
 .fw-agenda__empty {
   color: var(--text-muted);

@@ -1,6 +1,6 @@
 # TaskNotes Agenda Wrapper
 
-A simple display of all your task notes in a taoday's agenda window for. It gives you stats, date-grouped, quick task entry, and list for the sidebar or embedded.
+A simple display of all your task notes in a today's agenda window for. It gives you stats, date-grouped, quick task entry, and list for the sidebar or embedded.
 
 ![Today's Agenda](./assets/agendawrapper.png)
 
@@ -11,7 +11,7 @@ A simple display of all your task notes in a taoday's agenda window for. It give
 - **Today's Agenda pane** - open it in the sidebar (or anywhere) from a ribbon icon or command.
 - **Stat tiles** - Todo / Overdue / Unplanned counts. Click a tile to filter the list to that category; click again to clear.
 - **Date-grouped list** — an Unplanned section, then Overdue, then each upcoming day. Every section is collapsible.
-- **Quick task entry** - type a title, press Enter (or the button), and a formatted TaskNotes task note is created.
+- **Quick task entry** - type a title, press Enter (or the button), and a formatted TaskNotes task note is created. Hit the dropdown next to 'New task' to topen TaskNotes creation modal
 - **Native TaskNotes styling** - status and priority dots use your TaskNotes status/priority colors; the widget inherits your theme via Obsidian CSS variables.
 - **Interactive** - click a task title to open it; click its status ring to change status.
 - **Embeddable** - with code block.
@@ -44,7 +44,7 @@ Optional settings inside the block:
 
 ## How it reads your tasks
 
-It reads TaskNotes' own settings at runtime and falls back to TaskNotes defaults if they can't be read. A task is any note carrying your tag. Dates, status, and priority come from your configured frontmatter fields. Creating and completing tasks writes standard TaskNotes frontmatter, which TaskNotes then re-indexes.
+It reads TaskNotes' own settings at runtime and falls back to TaskNotes defaults if they can't be read. A task is any note carrying your tag. Dates, status, and priority, projects, and tags come from your configured frontmatter fields. Creating and completing tasks writes standard TaskNotes frontmatter, which TaskNotes then re-indexes.
 
 ## Installation
 
@@ -60,7 +60,7 @@ Settings → Community plugins → Browse → search **TaskNotes Agenda Wrapper*
 
 ### Via BRAT
 
-Add `toyotathief/tasknotes-agenda-wrapper` as a beta plugin in [BRAT](https://github.com/TfTHacker/obsidian42-brat).
+Add `toya-co/tasknotes-agenda-wrapper` as a beta plugin in [BRAT](https://github.com/TfTHacker/obsidian42-brat).
 
 ## License
 
