@@ -2,19 +2,22 @@
 
 A simple display of all your task notes in a today's agenda window for. It gives you stats, date-grouped, quick task entry, and list for the sidebar or embedded.
 
-![Today's Agenda](./assets/agendawrapper.png)
+| | |
+|:--:|:--:|
+| <img src="./assets/agendawrapper1.png" height="420"> | <img src="./assets/agendawrapper.png" height="420"> |
 
 > Requires the [TaskNotes](https://github.com/callumalpass/tasknotes). plugin. This reads your TaskNotes tasks; it does not manage tasks on its own. 
 
 ## Features
 
 - **Today's Agenda pane** - open it in the sidebar (or anywhere) from a ribbon icon or command.
-- **Stat tiles** - Todo / Overdue / Unplanned counts. Click a tile to filter the list to that category; click again to clear.
-- **Date-grouped list** — an Unplanned section, then Overdue, then each upcoming day. Every section is collapsible.
+- **Stat tiles** - Todo / Overdue / Unplanned counts. Click a tile to filter the list to that category; click again to clear
+- **Emoji view** - change subtext to emojis
+- **Date-grouped list** — an Unplanned section, then Overdue, then each upcoming day. Every section is collapsible
 - **Quick task entry** - type a title, press Enter (or the button), and a formatted TaskNotes task note is created. Hit the dropdown next to 'New task' to topen TaskNotes creation modal
-- **Native TaskNotes styling** - status and priority dots use your TaskNotes status/priority colors; the widget inherits your theme via Obsidian CSS variables.
-- **Interactive** - click a task title to open it; click its status ring to change status.
-- **Embeddable** - with code block.
+- **Native TaskNotes styling** - status and priority dots use your TaskNotes status/priority colors; the widget inherits your theme via Obsidian CSS variables
+- **Interactive** - click a task title to open it; click its status ring to change status
+- **Embeddable** - with code block
 
 ## Usage
 

@@ -214,6 +214,16 @@ body.theme-dark.forest-theme-light .fw-agenda {
   top: 1px;             /* centering knob: the dot rides higher as it scales, so push it back down */
 }
 .fw-task__meta-key { color: var(--text-faint); }
+/* icon mode — sits a step brighter than the text label it replaces, since the icon
+   is now the only thing naming the field and --text-faint reads as noise at 13px */
+.fw-task__meta-icon {
+  display: inline-flex;
+  align-items: center;
+  color: var(--text-muted);
+  margin-right: 4px;
+  vertical-align: -2px;
+}
+.fw-task__meta-icon svg { width: 13px; height: 13px; }
 .fw-task__tag {
   background: var(--background-modifier-border);
   color: var(--text-muted);

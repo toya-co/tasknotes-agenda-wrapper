@@ -1,10 +1,21 @@
 'use strict';
 
 const obsidian = require('obsidian');
-const { Plugin, MarkdownRenderChild, ItemView, Notice, setIcon } = obsidian;
+const { Plugin, PluginSettingTab, Setting, MarkdownRenderChild, ItemView, Notice, setIcon } = obsidian;
 const moment = obsidian.moment || window.moment;
 
 const VIEW_TYPE_AGENDA = 'tasknotes-agenda-view';
+
+const DEFAULT_SETTINGS = { metaIcons: false };
+
+// Lucide names for the meta row when icons are on. Tags are deliberately absent —
+// they keep their pill background and read as labels, not as a field.
+const META_ICONS = {
+  due: 'calendar',
+  scheduled: 'notebook-pen',
+  priority: 'circle-alert',
+  file: 'file-text',
+};
 
 // Fallbacks — used only if TaskNotes settings can't be read at runtime.
 const DEFAULT_FIELDS = {
@@ -89,6 +100,8 @@ function parseOptions(source) {
 module.exports = class TaskNotesAgendaWrapper extends Plugin {
   async onload() {
     this.controllers = new Set();
+    await this.loadSettings();
+    this.addSettingTab(new AgendaSettingTab(this.app, this));
 
     this.registerView(VIEW_TYPE_AGENDA, (leaf) => new AgendaPane(leaf, this));
     this.addRibbonIcon('calendar-clock', "TaskNotes agenda", () => this.activateAgenda());
@@ -105,6 +118,17 @@ module.exports = class TaskNotesAgendaWrapper extends Plugin {
     this.registerEvent(this.app.vault.on('delete', refresh));
     this.registerInterval(window.setInterval(() => this.controllers.forEach((c) => c.render()), 5 * 60 * 1000));
   }
+
+  async loadSettings() {
+    this.settings = Object.assign({}, DEFAULT_SETTINGS, await this.loadData());
+  }
+
+  async saveSettings() {
+    await this.saveData(this.settings);
+    this.refreshAll();
+  }
+
+  refreshAll() { this.controllers.forEach((c) => c.render()); }
 
   async activateAgenda() {
     const { workspace } = this.app;
@@ -400,14 +424,21 @@ class AgendaController {
       .addEventListener('click', () => this.plugin.app.workspace.getLeaf(false).openFile(task.file));
 
     const meta = body.createDiv({ cls: 'fw-task__meta' });
+    const icons = !!this.plugin.settings.metaIcons;
     const part = (label, val) => {
       if (val == null) return;
-      meta.createSpan({ cls: 'fw-task__meta-key', text: label + ': ' });
+      if (icons && META_ICONS[label]) {
+        const ic = meta.createSpan({ cls: 'fw-task__meta-icon', attr: { 'aria-label': label } });
+        setIcon(ic, META_ICONS[label]);
+      } else {
+        meta.createSpan({ cls: 'fw-task__meta-key', text: label + ': ' });
+      }
       meta.createSpan({ text: val });
       meta.createSpan({ cls: 'fw-sep', text: '·' });
     };
-    if (task.due) part('due', this.relDate(task.due));
+    // Order is fixed: scheduled (when you'll do it) before due (when it's owed).
     if (task.scheduled) part('scheduled', this.relDate(task.scheduled));
+    if (task.due) part('due', this.relDate(task.due));
     if (task.priority && task.priority !== 'none') {
       part('priority', (cfg.prioMap[task.priority] && cfg.prioMap[task.priority].label) || task.priority);
     }
@@ -440,4 +471,24 @@ class AgendaPane extends ItemView {
     this.ctrl.render();
   }
   async onClose() { if (this.ctrl) this.plugin.controllers.delete(this.ctrl); }
+}
+
+/* Settings. */
+class AgendaSettingTab extends PluginSettingTab {
+  constructor(app, plugin) { super(app, plugin); this.plugin = plugin; }
+
+  display() {
+    const { containerEl } = this;
+    containerEl.empty();
+
+    new Setting(containerEl)
+      .setName('Icons in task metadata')
+      .setDesc('Replace the "due:" / "scheduled:" / "priority:" / "file:" labels with icons. Tags keep their pill background either way.')
+      .addToggle((t) => t
+        .setValue(this.plugin.settings.metaIcons)
+        .onChange(async (v) => {
+          this.plugin.settings.metaIcons = v;
+          await this.plugin.saveSettings();
+        }));
+  }
 }
