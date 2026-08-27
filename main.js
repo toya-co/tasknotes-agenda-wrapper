@@ -1,12 +1,12 @@
 'use strict';
 
 const obsidian = require('obsidian');
-const { Plugin, PluginSettingTab, Setting, MarkdownRenderChild, ItemView, Notice, setIcon } = obsidian;
+const { Plugin, PluginSettingTab, Setting, MarkdownRenderChild, ItemView, Notice, setIcon, Keymap } = obsidian;
 const moment = obsidian.moment || window.moment;
 
 const VIEW_TYPE_AGENDA = 'tasknotes-agenda-view';
 
-const DEFAULT_SETTINGS = { metaIcons: false };
+const DEFAULT_SETTINGS = { metaIcons: false, openInNewTab: true };
 
 // Lucide names for the meta row when icons are on. Tags are deliberately absent —
 // they keep their pill background and read as labels, not as a field.
@@ -244,6 +244,23 @@ module.exports = class TaskNotesAgendaWrapper extends Plugin {
     document.execCommand('insertText', false, text);
   }
 
+  // Click routing for task titles. A mod-click keeps Obsidian's native meaning
+  // (tab / split) regardless of the setting; a plain click follows openInNewTab.
+  // forceNewTab is the middle-click path — a new tab is the whole point there,
+  // so it ignores the setting.
+  openTask(file, evt, forceNewTab) {
+    const ws = this.app.workspace;
+    const mode = Keymap.isModEvent(evt);
+    if (mode) { ws.getLeaf(mode).openFile(file); return; }
+    if (!forceNewTab && !this.settings.openInNewTab) { ws.getLeaf(false).openFile(file); return; }
+    // getLeaf('tab') always builds a new one, so repeat clicks would stack
+    // duplicate tabs of the same task — surface the existing one instead.
+    const open = ws.getLeavesOfType('markdown')
+      .find((l) => l.view && l.view.file && l.view.file.path === file.path);
+    if (open) { ws.revealLeaf(open); ws.setActiveLeaf(open, { focus: true }); return; }
+    ws.getLeaf('tab').openFile(file);
+  }
+
   async createTask(rawTitle, cfg) {
     const title = (rawTitle || '').trim();
     if (!title) return;
@@ -420,8 +437,16 @@ class AgendaController {
     }
 
     const body = row.createDiv({ cls: 'fw-task__body' });
-    body.createDiv({ cls: 'fw-task__title', text: task.title })
-      .addEventListener('click', () => this.plugin.app.workspace.getLeaf(false).openFile(task.file));
+    const titleEl = body.createDiv({ cls: 'fw-task__title', text: task.title });
+    titleEl.addEventListener('click', (e) => this.plugin.openTask(task.file, e));
+    // Chromium fires `auxclick`, not `click`, for the middle button, and its own
+    // mousedown default starts autoscroll — so both handlers are needed.
+    titleEl.addEventListener('auxclick', (e) => {
+      if (e.button !== 1) return;
+      e.preventDefault();
+      this.plugin.openTask(task.file, e, true);
+    });
+    titleEl.addEventListener('mousedown', (e) => { if (e.button === 1) e.preventDefault(); });
 
     const meta = body.createDiv({ cls: 'fw-task__meta' });
     const icons = !!this.plugin.settings.metaIcons;
@@ -480,6 +505,16 @@ class AgendaSettingTab extends PluginSettingTab {
   display() {
     const { containerEl } = this;
     containerEl.empty();
+
+    new Setting(containerEl)
+      .setName('Open tasks in a new tab')
+      .setDesc('Clicking a task title opens it in a new tab, reusing that tab if the task is already open. Turn this off to open tasks in the current tab. Mod-click always opens a new tab either way.')
+      .addToggle((t) => t
+        .setValue(this.plugin.settings.openInNewTab)
+        .onChange(async (v) => {
+          this.plugin.settings.openInNewTab = v;
+          await this.plugin.saveSettings();
+        }));
 
     new Setting(containerEl)
       .setName('Icons in task metadata')

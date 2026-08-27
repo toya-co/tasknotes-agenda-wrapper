@@ -1,6 +1,7 @@
-# macOS / editors
+# macOS / editors / agent cruft
 .DS_Store
 *.log
+.claude/
 
 # node (not needed — this is a no-build plugin — but ignored if you add tooling)
 node_modules/
