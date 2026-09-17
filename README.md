@@ -17,6 +17,7 @@ A simple display of all your task notes in a today's agenda window for. It gives
 - **Quick task entry** - type a title, press Enter (or the button), and a formatted TaskNotes task note is created. Hit the dropdown next to 'New task' to topen TaskNotes creation modal
 - **Native TaskNotes styling** - status and priority dots use your TaskNotes status/priority colors; the widget inherits your theme via Obsidian CSS variables
 - **Interactive** - click a task title to open it; click its status ring to change status
+- **Calendar events** (optional) — when TaskNotes has ICS / Google / Microsoft calendar integration active, show those events interleaved with tasks by time. Click an event to create a task or note from it
 - **Embeddable** - with code block
 
 ## Usage
@@ -40,10 +41,18 @@ Optional settings inside the block:
     ```tasknotes-agenda
     title: This Week
     days: 7
+    events: true
     ```
 
 - `title` — the header shown under the date line (default: `Today's Agenda`).
 - `days` — how many days ahead to include (default: `14`).
+- `events` — `true` / `false` to show or hide TaskNotes calendar events in this block (overrides the plugin setting).
+
+### Settings
+
+- **Show calendar events** — include TaskNotes calendar events (ICS subscriptions, Google, Microsoft) in each day, sorted by time alongside tasks.
+- **Hide events that already ended today** — omit today's events whose end time has passed.
+- **Open tasks in a new tab** / **Icons in task metadata** — see the settings pane for details.
 
 ## How it reads your tasks
 
