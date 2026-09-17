@@ -1,12 +1,17 @@
 'use strict';
 
 const obsidian = require('obsidian');
-const { Plugin, PluginSettingTab, Setting, MarkdownRenderChild, ItemView, Notice, setIcon, Keymap } = obsidian;
+const { Plugin, PluginSettingTab, Setting, MarkdownRenderChild, ItemView, Notice, setIcon, Keymap, Menu } = obsidian;
 const moment = obsidian.moment || window.moment;
 
 const VIEW_TYPE_AGENDA = 'tasknotes-agenda-view';
 
-const DEFAULT_SETTINGS = { metaIcons: false, openInNewTab: true };
+const DEFAULT_SETTINGS = {
+  metaIcons: false,
+  openInNewTab: true,
+  showCalendarEvents: false,
+  hideFinishedEventsToday: false,
+};
 
 // Lucide names for the meta row when icons are on. Tags are deliberately absent —
 // they keep their pill background and read as labels, not as a field.
@@ -34,6 +39,14 @@ const DEFAULT_PRIORITIES = [
   { value: 'low', label: 'Low', color: '#00aa00', weight: 1 },
   { value: 'normal', label: 'Normal', color: '#ffaa00', weight: 2 },
   { value: 'high', label: 'High', color: '#ff0000', weight: 3 },
+];
+
+const GOOGLE_DEFAULT_COLOR = '#4285F4';
+const MICROSOFT_DEFAULT_COLOR = '#0078D4';
+const CALENDAR_SERVICE_KEYS = [
+  'icsSubscriptionService',
+  'googleCalendarService',
+  'microsoftCalendarService',
 ];
 
 function debounce(fn, ms) {
@@ -93,13 +106,109 @@ function parseOptions(source) {
     const k = m[1].toLowerCase();
     if (k === 'title') opts.title = m[2];
     else if (k === 'days') opts.days = Math.max(1, parseInt(m[2], 10) || 14);
+    else if (k === 'events') {
+      const v = m[2].trim().toLowerCase();
+      opts.events = v === 'true' || v === 'yes' || v === '1';
+    }
   });
   return opts;
+}
+
+function extractDateKey(dateStr) {
+  if (!dateStr) return null;
+  const m = String(dateStr).match(/^(\d{4}-\d{2}-\d{2})/);
+  return m ? m[1] : null;
+}
+
+// Mirrors TaskNotes MiniCalendarView.getDateKeysForExternalEvent: all-day end is exclusive.
+function eventDateKeys(ev) {
+  const startKey = extractDateKey(ev.start);
+  if (!startKey) return [];
+
+  const endKey = extractDateKey(ev.end || '');
+  if (!endKey || endKey === startKey) return [startKey];
+
+  const start = moment.utc(startKey, 'YYYY-MM-DD', true);
+  let end = moment.utc(endKey, 'YYYY-MM-DD', true);
+  if (!start.isValid() || !end.isValid()) return [startKey];
+
+  if (ev.allDay) end = end.clone().subtract(1, 'day');
+  if (end.isBefore(start, 'day')) return [startKey];
+
+  const keys = [];
+  const cursor = start.clone();
+  for (let i = 0; !cursor.isAfter(end, 'day') && i < 370; i++) {
+    keys.push(cursor.format('YYYY-MM-DD'));
+    cursor.add(1, 'day');
+  }
+  return keys.length ? keys : [startKey];
+}
+
+function hasClockTime(dateStr) {
+  if (!dateStr) return false;
+  // YYYY-MM-DD alone is date-only; anything with a time component counts.
+  return /T\d{2}:\d{2}/.test(String(dateStr)) || /\d{2}:\d{2}/.test(String(dateStr).slice(10));
+}
+
+function itemSortTime(item) {
+  if (item.isEvent) {
+    if (item.allDay || !hasClockTime(item.start)) return null;
+    const t = moment(item.start, [moment.ISO_8601, 'YYYY-MM-DDTHH:mm', 'YYYY-MM-DD HH:mm']);
+    return t.isValid() ? t.valueOf() : null;
+  }
+  const raw = item.scheduled || item.due;
+  if (!raw || !hasClockTime(raw)) return null;
+  const t = moment(raw, [moment.ISO_8601, 'YYYY-MM-DDTHH:mm', 'YYYY-MM-DD HH:mm', 'YYYY-MM-DD']);
+  return t.isValid() ? t.valueOf() : null;
+}
+
+function eventHasEnded(ev, now) {
+  if (!ev.end) {
+    if (ev.allDay || !hasClockTime(ev.start)) return false;
+    const start = moment(ev.start, [moment.ISO_8601, 'YYYY-MM-DDTHH:mm']);
+    if (!start.isValid()) return false;
+    // No end time: assume 1h so in-progress meetings stay visible.
+    return start.clone().add(1, 'hour').isBefore(now);
+  }
+  if (ev.allDay && /^\d{4}-\d{2}-\d{2}$/.test(String(ev.end))) {
+    // Exclusive end date: the event covers through the day before.
+    const endDay = moment(ev.end, 'YYYY-MM-DD').startOf('day');
+    return !endDay.isAfter(now, 'day');
+  }
+  const end = moment(ev.end, [moment.ISO_8601, 'YYYY-MM-DDTHH:mm', 'YYYY-MM-DD']);
+  return end.isValid() && end.isBefore(now);
+}
+
+function findProviderCalendar(calendars, id) {
+  if (!calendars || !id) return null;
+  if (Array.isArray(calendars)) {
+    return calendars.find((c) => c && (c.id === id || c.calendarId === id)) || null;
+  }
+  if (typeof calendars.get === 'function') return calendars.get(id) || null;
+  return calendars[id] || null;
+}
+
+function calendarLabel(cal, fallback) {
+  if (!cal) return fallback;
+  return cal.summary || cal.name || cal.displayName || fallback;
+}
+
+function calendarColor(cal, fallback) {
+  if (!cal) return fallback;
+  return cal.backgroundColor || cal.color || cal.hexColor || fallback;
+}
+
+function calendarIsEnabled(cal) {
+  if (!cal) return true;
+  if (cal.enabled === false || cal.selected === false || cal.hidden === true) return false;
+  return true;
 }
 
 module.exports = class TaskNotesAgendaWrapper extends Plugin {
   async onload() {
     this.controllers = new Set();
+    this._calendarUnsubs = [];
+    this._calendarSubscribed = new Set();
     await this.loadSettings();
     this.addSettingTab(new AgendaSettingTab(this.app, this));
 
@@ -111,12 +220,16 @@ module.exports = class TaskNotesAgendaWrapper extends Plugin {
       ctx.addChild(new AgendaBlock(this, el, parseOptions(source)));
     });
 
-    const refresh = debounce(() => this.controllers.forEach((c) => c.render()), 500);
-    this.registerEvent(this.app.metadataCache.on('resolved', refresh));
-    this.registerEvent(this.app.metadataCache.on('changed', refresh));
-    this.registerEvent(this.app.vault.on('rename', refresh));
-    this.registerEvent(this.app.vault.on('delete', refresh));
+    this._refresh = debounce(() => this.controllers.forEach((c) => c.render()), 500);
+    this.registerEvent(this.app.metadataCache.on('resolved', this._refresh));
+    this.registerEvent(this.app.metadataCache.on('changed', this._refresh));
+    this.registerEvent(this.app.vault.on('rename', this._refresh));
+    this.registerEvent(this.app.vault.on('delete', this._refresh));
     this.registerInterval(window.setInterval(() => this.controllers.forEach((c) => c.render()), 5 * 60 * 1000));
+
+    this.app.workspace.onLayoutReady(() => this.subscribeCalendarServices());
+    // Safety net if TaskNotes loads after us — also re-tried from render().
+    this.register(() => this.unsubscribeCalendarServices());
   }
 
   async loadSettings() {
@@ -140,8 +253,41 @@ module.exports = class TaskNotesAgendaWrapper extends Plugin {
     workspace.revealLeaf(leaf);
   }
 
+  getTaskNotes() {
+    return this.app.plugins.plugins.tasknotes || null;
+  }
+
+  hasCalendarIntegration() {
+    const tn = this.getTaskNotes();
+    if (!tn) return false;
+    return CALENDAR_SERVICE_KEYS.some((k) => tn[k] && typeof tn[k].getAllEvents === 'function');
+  }
+
+  subscribeCalendarServices() {
+    const tn = this.getTaskNotes();
+    if (!tn) return;
+    for (const key of CALENDAR_SERVICE_KEYS) {
+      if (this._calendarSubscribed.has(key)) continue;
+      const svc = tn[key];
+      if (!svc || typeof svc.on !== 'function') continue;
+      try {
+        const unsub = svc.on('data-changed', this._refresh);
+        if (typeof unsub === 'function') this._calendarUnsubs.push(unsub);
+        this._calendarSubscribed.add(key);
+      } catch (e) { /* internal emitter — never break the agenda */ }
+    }
+  }
+
+  unsubscribeCalendarServices() {
+    for (const unsub of this._calendarUnsubs) {
+      try { unsub(); } catch (e) { /* ignore */ }
+    }
+    this._calendarUnsubs = [];
+    this._calendarSubscribed = new Set();
+  }
+
   getConfig() {
-    const tn = this.app.plugins.plugins.tasknotes;
+    const tn = this.getTaskNotes();
     const s = (tn && tn.settings) || {};
     const fields = Object.assign({}, DEFAULT_FIELDS, s.fieldMapping || {});
     const statuses = (s.customStatuses && s.customStatuses.length) ? s.customStatuses : DEFAULT_STATUSES;
@@ -183,6 +329,180 @@ module.exports = class TaskNotesAgendaWrapper extends Plugin {
     return out;
   }
 
+  getCalendarEvents() {
+    const tn = this.getTaskNotes();
+    if (!tn) return [];
+    // TaskNotes may finish booting after us — keep trying to attach listeners.
+    this.subscribeCalendarServices();
+
+    const out = [];
+    const seen = new Set();
+    const push = (list, resolveMeta) => {
+      for (const ev of list || []) {
+        if (!ev) continue;
+        const id = ev.id || `${ev.subscriptionId || 'cal'}:${ev.start || ''}:${ev.title || ''}`;
+        if (!id || seen.has(id)) continue;
+        let meta;
+        try { meta = resolveMeta(ev); } catch (e) { continue; }
+        if (!meta) continue;
+        seen.add(id);
+        out.push(Object.assign({}, ev, meta, { isEvent: true, id }));
+      }
+    };
+
+    const ics = tn.icsSubscriptionService;
+    if (ics && typeof ics.getAllEvents === 'function') {
+      try {
+        const subs = new Map();
+        if (typeof ics.getSubscriptions === 'function') {
+          for (const s of ics.getSubscriptions() || []) {
+            if (s && s.id) subs.set(s.id, s);
+          }
+        }
+        push(ics.getAllEvents(), (ev) => {
+          const sub = subs.get(ev.subscriptionId);
+          if (sub && sub.enabled === false) return null;
+          return {
+            calendarName: (sub && sub.name) || 'Calendar',
+            color: ev.color || (sub && sub.color) || '#7aa2f7',
+          };
+        });
+      } catch (e) { /* never break the agenda */ }
+    }
+
+    const google = tn.googleCalendarService;
+    if (google && typeof google.getAllEvents === 'function') {
+      try {
+        const calendars = typeof google.getAvailableCalendars === 'function'
+          ? google.getAvailableCalendars()
+          : [];
+        push(google.getAllEvents(), (ev) => {
+          const calId = String(ev.subscriptionId || '').replace(/^google-/, '');
+          const cal = findProviderCalendar(calendars, calId);
+          if (!calendarIsEnabled(cal)) return null;
+          return {
+            calendarName: calendarLabel(cal, 'Google Calendar'),
+            color: ev.color || calendarColor(cal, GOOGLE_DEFAULT_COLOR),
+          };
+        });
+      } catch (e) { /* never break the agenda */ }
+    }
+
+    const ms = tn.microsoftCalendarService;
+    if (ms && typeof ms.getAllEvents === 'function') {
+      try {
+        const calendars = typeof ms.getAvailableCalendars === 'function'
+          ? ms.getAvailableCalendars()
+          : [];
+        push(ms.getAllEvents(), (ev) => {
+          const calId = String(ev.subscriptionId || '').replace(/^microsoft-/, '');
+          const cal = findProviderCalendar(calendars, calId);
+          if (!calendarIsEnabled(cal)) return null;
+          return {
+            calendarName: calendarLabel(cal, 'Microsoft Calendar'),
+            color: ev.color || calendarColor(cal, MICROSOFT_DEFAULT_COLOR),
+          };
+        });
+      } catch (e) { /* never break the agenda */ }
+    }
+
+    return out;
+  }
+
+  // Events for a day key map, optionally dropping ones that already ended today.
+  bucketCalendarEvents(events, todayKey, hideFinished) {
+    const buckets = new Map();
+    const now = moment();
+    for (const ev of events) {
+      if (hideFinished) {
+        const keys = eventDateKeys(ev);
+        if (keys.includes(todayKey) && eventHasEnded(ev, now)) {
+          // Still show on other days of a multi-day span; drop only the today slot.
+          for (const key of keys) {
+            if (key === todayKey) continue;
+            if (!buckets.has(key)) buckets.set(key, []);
+            buckets.get(key).push(ev);
+          }
+          continue;
+        }
+      }
+      for (const key of eventDateKeys(ev)) {
+        if (!buckets.has(key)) buckets.set(key, []);
+        buckets.get(key).push(ev);
+      }
+    }
+    return buckets;
+  }
+
+  showEventsEnabled(opts) {
+    if (opts && typeof opts.events === 'boolean') return opts.events;
+    return !!this.settings.showCalendarEvents;
+  }
+
+  openEventMenu(ev, mouseEvent) {
+    const menu = new Menu();
+    const tn = this.getTaskNotes();
+    const noteSvc = tn && tn.icsNoteService;
+
+    menu.addItem((item) => item
+      .setTitle('Create task from event')
+      .setIcon('check-circle')
+      .onClick(async () => {
+        if (!noteSvc || typeof noteSvc.createTaskFromICS !== 'function') {
+          new Notice('TaskNotes calendar integration is not available.');
+          return;
+        }
+        try {
+          await noteSvc.createTaskFromICS(ev);
+          new Notice(`Task created: ${ev.title}`);
+        } catch (e) {
+          new Notice('Could not create task from event.');
+        }
+      }));
+
+    menu.addItem((item) => item
+      .setTitle('Create note from event')
+      .setIcon('file-plus')
+      .onClick(async () => {
+        if (!noteSvc || typeof noteSvc.createNoteFromICS !== 'function') {
+          new Notice('TaskNotes calendar integration is not available.');
+          return;
+        }
+        try {
+          await noteSvc.createNoteFromICS(ev);
+          new Notice(`Note created: ${ev.title}`);
+        } catch (e) {
+          new Notice('Could not create note from event.');
+        }
+      }));
+
+    if (ev.url) {
+      menu.addSeparator();
+      menu.addItem((item) => item
+        .setTitle('Open link')
+        .setIcon('external-link')
+        .onClick(() => {
+          window.open(ev.url, '_blank', 'noopener');
+        }));
+    }
+
+    menu.addSeparator();
+    menu.addItem((item) => item
+      .setTitle('Copy title')
+      .setIcon('copy')
+      .onClick(async () => {
+        try {
+          await navigator.clipboard.writeText(ev.title || '');
+          new Notice('Title copied');
+        } catch (e) {
+          new Notice('Could not copy title.');
+        }
+      }));
+
+    if (mouseEvent) menu.showAtMouseEvent(mouseEvent);
+    else menu.showAtPosition({ x: 0, y: 0 });
+  }
+
   async toggleStatus(task, cfg) {
     const F = cfg.fields;
     const nowDone = !task.done;
@@ -197,7 +517,7 @@ module.exports = class TaskNotesAgendaWrapper extends Plugin {
   // Hand off to TaskNotes' own creation modal (full field editor + NLP parsing),
   // seeded with whatever was already typed. Returns false if TaskNotes isn't loaded.
   openNativeCreator(rawTitle) {
-    const tn = this.app.plugins.plugins.tasknotes;
+    const tn = this.getTaskNotes();
     const text = (rawTitle || '').trim();
     if (!tn || typeof tn.openTaskCreationModal !== 'function') {
       if (this.app.commands.executeCommandById('tasknotes:create-new-task')) return true;
@@ -294,6 +614,7 @@ class AgendaController {
     this.opts = opts;
     this.filter = null; // null | 'todo' | 'overdue' | 'unplanned'
     this.collapsed = new Set(); // section labels the user has collapsed
+    this.eventsVisible = true; // session toggle; only relevant when feature is on
   }
 
   relDate(dateStr) {
@@ -312,14 +633,66 @@ class AgendaController {
 
   empty(root, text) { root.createDiv({ cls: 'fw-agenda__empty', text }); }
 
+  formatEventTime(ev) {
+    if (ev.allDay || !hasClockTime(ev.start)) return 'All day';
+    const start = moment(ev.start, [moment.ISO_8601, 'YYYY-MM-DDTHH:mm']);
+    if (!start.isValid()) return 'All day';
+    const startLabel = start.format('HH:mm');
+    if (!ev.end || !hasClockTime(ev.end)) return startLabel;
+    const end = moment(ev.end, [moment.ISO_8601, 'YYYY-MM-DDTHH:mm']);
+    if (!end.isValid()) return startLabel;
+    return `${startLabel} – ${end.format('HH:mm')}`;
+  }
+
+  sortMixedItems(items, cfg) {
+    const wt = (p) => (cfg.prioMap[p] && cfg.prioMap[p].weight) || 0;
+    const untimed = [];
+    const timed = [];
+    for (const item of items) {
+      if (itemSortTime(item) == null) untimed.push(item);
+      else timed.push(item);
+    }
+    untimed.sort((a, b) => {
+      if (a.isEvent !== b.isEvent) return a.isEvent ? 1 : -1; // tasks before events among untimed
+      if (!a.isEvent && !b.isEvent) {
+        return wt(b.priority) - wt(a.priority) || a.title.localeCompare(b.title);
+      }
+      return (a.title || '').localeCompare(b.title || '');
+    });
+    timed.sort((a, b) => {
+      const ta = itemSortTime(a);
+      const tb = itemSortTime(b);
+      if (ta !== tb) return ta - tb;
+      if (a.isEvent !== b.isEvent) return a.isEvent ? 1 : -1;
+      return (a.title || '').localeCompare(b.title || '');
+    });
+    return untimed.concat(timed);
+  }
+
   render() {
     const cfg = this.plugin.getConfig();
     const active = this.plugin.getTasks(cfg).filter((t) => !t.done);
     const today = moment().startOf('day');
+    const todayKey = today.format('YYYY-MM-DD');
+    const featureOn = this.plugin.showEventsEnabled(this.opts);
+    const showEvents = featureOn && this.eventsVisible;
+
+    let eventBuckets = new Map();
+    if (showEvents) {
+      const events = this.plugin.getCalendarEvents();
+      eventBuckets = this.plugin.bucketCalendarEvents(
+        events,
+        todayKey,
+        !!this.plugin.settings.hideFinishedEventsToday
+      );
+    }
+
+    const eventsFor = (dayMoment) => eventBuckets.get(dayMoment.format('YYYY-MM-DD')) || [];
 
     const overdue = active.filter((t) => t.due && moment(t.due, ['YYYY-MM-DD', moment.ISO_8601]).isBefore(today, 'day'));
     const unplanned = active.filter((t) => !t.due && !t.scheduled);
     const todoToday = active.filter((t) => this.sameDay(t.scheduled, today) || this.sameDay(t.due, today));
+    const todayEvents = eventsFor(today);
 
     const el = this.containerEl;
     el.empty();
@@ -332,7 +705,24 @@ class AgendaController {
     dl.createSpan({ text: now.format('D') });
     dl.createSpan({ cls: 'fw-sep', text: '•' });
     dl.createSpan({ text: now.format('YYYY') });
-    root.createDiv({ cls: 'fw-agenda__title', text: this.opts.title });
+
+    const titleRow = root.createDiv({ cls: 'fw-agenda__title-row' });
+    titleRow.createDiv({ cls: 'fw-agenda__title', text: this.opts.title });
+    if (featureOn) {
+      const btn = titleRow.createDiv({
+        cls: 'fw-agenda__events-toggle' + (this.eventsVisible ? ' is-active' : ''),
+        attr: {
+          'aria-label': this.eventsVisible ? 'Hide calendar events' : 'Show calendar events',
+          role: 'button',
+        },
+      });
+      setIcon(btn, 'calendar');
+      btn.addEventListener('click', (e) => {
+        e.stopPropagation();
+        this.eventsVisible = !this.eventsVisible;
+        this.render();
+      });
+    }
 
     // clickable, colored stat tiles that filter the list
     const stats = root.createDiv({ cls: 'fw-agenda__stats' });
@@ -343,7 +733,8 @@ class AgendaController {
       t.setAttribute('aria-label', `Show ${label.toLowerCase()}`);
       t.addEventListener('click', () => { this.filter = this.filter === key ? null : key; this.render(); });
     };
-    tile(todoToday.length, 'Todo', 'todo');
+    // Todo count matches the Todo filter list (tasks + today's events when visible).
+    tile(todoToday.length + todayEvents.length, 'Todo', 'todo');
     tile(overdue.length, 'Overdue', 'overdue');
     tile(unplanned.length, 'Unplanned', 'unplanned');
 
@@ -379,7 +770,10 @@ class AgendaController {
 
     // list — filtered by the active tile, or the full agenda
     if (this.filter === 'todo') {
-      todoToday.length ? this.renderSection(root, 'Today', todoToday, cfg, false) : this.empty(root, 'No tasks for today.');
+      const todayItems = todoToday.concat(todayEvents);
+      todayItems.length
+        ? this.renderSection(root, 'Today', todayItems, cfg, false)
+        : this.empty(root, 'No tasks for today.');
     } else if (this.filter === 'overdue') {
       overdue.length ? this.renderSection(root, 'Overdue', overdue, cfg, true) : this.empty(root, 'Nothing overdue.');
     } else if (this.filter === 'unplanned') {
@@ -390,7 +784,9 @@ class AgendaController {
       if (overdue.length) { this.renderSection(root, 'Overdue', overdue, cfg, true); any = true; }
       for (let i = 0; i < this.opts.days; i++) {
         const day = today.clone().add(i, 'days');
-        const items = active.filter((t) => this.sameDay(t.scheduled, day) || this.sameDay(t.due, day));
+        const tasks = active.filter((t) => this.sameDay(t.scheduled, day) || this.sameDay(t.due, day));
+        const dayEvents = eventsFor(day);
+        const items = tasks.concat(dayEvents);
         if (!items.length) continue;
         this.renderSection(root, day.format('dddd, MMM D'), items, cfg, false);
         any = true;
@@ -414,9 +810,52 @@ class AgendaController {
       this.render();
     });
     if (collapsed) return;
-    const wt = (p) => (cfg.prioMap[p] && cfg.prioMap[p].weight) || 0;
-    items.sort((a, b) => wt(b.priority) - wt(a.priority) || a.title.localeCompare(b.title));
-    for (const task of items) this.renderTask(root, task, cfg);
+    const sorted = this.sortMixedItems(items.slice(), cfg);
+    for (const item of sorted) {
+      if (item.isEvent) this.renderEvent(root, item);
+      else this.renderTask(root, item, cfg);
+    }
+  }
+
+  renderEvent(root, ev) {
+    const color = ev.color || '#7aa2f7';
+    const row = root.createDiv({ cls: 'fw-task fw-event' });
+    row.style.setProperty('--fw-event-color', color);
+
+    const dots = row.createDiv({ cls: 'fw-task__dots fw-event__dots' });
+    const bar = dots.createDiv({ cls: 'fw-event__bar' });
+    bar.style.background = color;
+    const icon = dots.createDiv({ cls: 'fw-event__icon', attr: { 'aria-label': 'Calendar event' } });
+    icon.style.color = color;
+    setIcon(icon, 'calendar');
+
+    const body = row.createDiv({ cls: 'fw-task__body' });
+    const titleEl = body.createDiv({ cls: 'fw-task__title fw-event__title', text: ev.title || 'Untitled event' });
+    titleEl.setAttribute('role', 'button');
+    titleEl.setAttribute('tabindex', '0');
+    titleEl.setAttribute('aria-label', 'Calendar event options');
+
+    const openMenu = (e) => {
+      e.preventDefault();
+      e.stopPropagation();
+      this.plugin.openEventMenu(ev, e);
+    };
+    titleEl.addEventListener('click', openMenu);
+    titleEl.addEventListener('contextmenu', openMenu);
+    titleEl.addEventListener('keydown', (e) => {
+      if (e.key !== 'Enter' && e.key !== ' ') return;
+      openMenu(e);
+    });
+    row.addEventListener('contextmenu', openMenu);
+
+    const meta = body.createDiv({ cls: 'fw-task__meta' });
+    const parts = [{ cls: 'fw-event__time', text: this.formatEventTime(ev) }];
+    if (ev.calendarName) parts.push({ text: ev.calendarName });
+    if (ev.location) parts.push({ text: ev.location });
+    parts.forEach((part, i) => {
+      if (i) meta.createSpan({ cls: 'fw-sep', text: '·' });
+      meta.createSpan(part);
+    });
   }
 
   renderTask(root, task, cfg) {
@@ -525,5 +964,32 @@ class AgendaSettingTab extends PluginSettingTab {
           this.plugin.settings.metaIcons = v;
           await this.plugin.saveSettings();
         }));
+
+    new Setting(containerEl)
+      .setName('Show calendar events')
+      .setDesc('When TaskNotes has calendar integrations active (ICS subscriptions, Google, or Microsoft), show those events alongside tasks in each day. Click an event for options like creating a task or note from it.')
+      .addToggle((t) => t
+        .setValue(this.plugin.settings.showCalendarEvents)
+        .onChange(async (v) => {
+          this.plugin.settings.showCalendarEvents = v;
+          await this.plugin.saveSettings();
+        }));
+
+    new Setting(containerEl)
+      .setName('Hide events that already ended today')
+      .setDesc('When showing calendar events, omit today\'s events whose end time has already passed. Multi-day events still appear on their remaining days.')
+      .addToggle((t) => t
+        .setValue(this.plugin.settings.hideFinishedEventsToday)
+        .onChange(async (v) => {
+          this.plugin.settings.hideFinishedEventsToday = v;
+          await this.plugin.saveSettings();
+        }));
+
+    if (!this.plugin.hasCalendarIntegration()) {
+      containerEl.createEl('p', {
+        cls: 'setting-item-description',
+        text: 'No TaskNotes calendar integration detected. Enable ICS subscriptions, Google Calendar, or Microsoft Calendar in TaskNotes settings to use these options.',
+      });
+    }
   }
 }

@@ -31,12 +31,39 @@ body.theme-dark.forest-theme-light .fw-agenda {
 }
 .fw-agenda__dateline .fw-sep { margin: 0 7px; opacity: 0.5; }
 
+.fw-agenda__title-row {
+  position: relative;
+  margin-bottom: 20px;
+}
 .fw-agenda__title {
   text-align: center;
   font-size: 23px;
   font-weight: 700;
   color: var(--text-normal);
-  margin-bottom: 20px;
+  margin-bottom: 0;
+}
+.fw-agenda__events-toggle {
+  position: absolute;
+  right: 0;
+  top: 50%;
+  transform: translateY(-50%);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  border-radius: 6px;
+  color: var(--text-muted);
+  cursor: pointer;
+  transition: color 120ms ease, background 120ms ease;
+}
+.fw-agenda__events-toggle svg { width: 16px; height: 16px; }
+.fw-agenda__events-toggle:hover {
+  color: var(--text-normal);
+  background: var(--background-modifier-hover);
+}
+.fw-agenda__events-toggle.is-active {
+  color: var(--interactive-accent);
 }
 
 /* stat tiles — colored, clickable, active on select */
@@ -238,4 +265,37 @@ body.theme-dark.forest-theme-light .fw-agenda {
   font-size: 14px;
   padding: 14px 0;
   text-align: center;
+}
+
+/* calendar events — distinct from tasks: color bar + icon instead of status ring */
+.fw-event {
+  background: color-mix(in srgb, var(--fw-event-color, var(--text-accent)) 10%, transparent);
+}
+.fw-event:hover {
+  background: color-mix(in srgb, var(--fw-event-color, var(--text-accent)) 18%, var(--background-modifier-hover));
+}
+.fw-event__dots {
+  gap: 8px;
+  padding-top: 3px;
+}
+.fw-event__bar {
+  width: 3px;
+  align-self: stretch;
+  min-height: 18px;
+  border-radius: 2px;
+  flex-shrink: 0;
+}
+.fw-event__icon {
+  display: inline-flex;
+  align-items: center;
+  flex-shrink: 0;
+}
+.fw-event__icon svg { width: 14px; height: 14px; }
+.fw-event__title {
+  font-weight: 400;
+  cursor: pointer;
+}
+.fw-event__time {
+  font-variant-numeric: tabular-nums;
+  color: var(--text-muted);
 }
