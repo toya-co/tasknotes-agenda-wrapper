@@ -1,10 +1,10 @@
 # TaskNotes Agenda Wrapper
 
-A simple display of all your task notes in a today's agenda window for. It gives you stats, date-grouped, quick task entry, and list for the sidebar or embedded.
+A display of all your task notes in a today's agenda window for. It gives you stats, date-grouped, quick task entry, and list for the sidebar or embedded.
 
-| | |
-|:--:|:--:|
-| <img src="./assets/agendawrapper1.png" height="420"> | <img src="./assets/agendawrapper.png" height="420"> |
+<p align="center">
+  <img src="./assets/agendawrapper.png" alt="Today's Agenda pane in the right sidebar beside the TaskNotes agenda view, showing stat tiles, unplanned and overdue sections, and upcoming days" />
+</p>
 
 > Requires the [TaskNotes](https://github.com/callumalpass/tasknotes). plugin. This reads your TaskNotes tasks; it does not manage tasks on its own. 
 
