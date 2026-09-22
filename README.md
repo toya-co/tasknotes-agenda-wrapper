@@ -10,14 +10,10 @@ A display of all your task notes in a today's agenda window for. It gives you st
 
 ## Features
 
-- **Today's Agenda pane** - open it in the sidebar (or anywhere) from a ribbon icon or command.
-- **Stat tiles** - Todo / Overdue / Unplanned counts. Click a tile to filter the list to that category; click again to clear
-- **Emoji view** - change subtext to emojis
-- **Date-grouped list** — an Unplanned section, then Overdue, then each upcoming day. Every section is collapsible
-- **Quick task entry** - type a title, press Enter (or the button), and a formatted TaskNotes task note is created. Hit the dropdown next to 'New task' to topen TaskNotes creation modal
-- **Native TaskNotes styling** - status and priority dots use your TaskNotes status/priority colors; the widget inherits your theme via Obsidian CSS variables
-- **Interactive** - click a task title to open it; click its status ring to change status
-- **Embeddable** - with code block
+- **Stat tiles** — Todo, Overdue and Unplanned counts; click one to filter.
+- **Date-grouped list** — Unplanned, Overdue, then each upcoming day, all collapsible.
+- **Quick entry** — type a title and press Enter, or open the full TaskNotes creator.
+- **Interactive** — click a title to open the task, its ring to mark it done.
 
 ## Usage
 
