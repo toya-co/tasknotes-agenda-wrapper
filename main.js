@@ -6,7 +6,7 @@ const moment = obsidian.moment || window.moment;
 
 const VIEW_TYPE_AGENDA = 'tasknotes-agenda-view';
 
-const DEFAULT_SETTINGS = { metaIcons: false, openInNewTab: true };
+const DEFAULT_SETTINGS = { metaIcons: false, openInNewTab: true, showOnce: false };
 
 // Lucide names for the meta row when icons are on. Tags are deliberately absent —
 // they keep their pill background and read as labels, not as a field.
@@ -213,6 +213,8 @@ module.exports = class TaskNotesAgendaWrapper extends Plugin {
         due: normDate(fm[F.due]),
         scheduled,
         recurring,
+        instances,
+        completed: normDate(fm[F.completedDate]),
         projects: linkNames(fm[F.projects]),
         tags: orderTags(tags, cfg.taskTag),
         done: instanceDone || !!(cfg.statusMap[status] && cfg.statusMap[status].isCompleted),
@@ -391,8 +393,13 @@ class AgendaController {
 
   render() {
     const cfg = this.plugin.getConfig();
-    const active = this.plugin.getTasks(cfg).filter((t) => !t.done);
+    const all = this.plugin.getTasks(cfg);
+    const active = all.filter((t) => !t.done);
     const today = moment().startOf('day');
+    const todayStr = today.format('YYYY-MM-DD');
+    // Finished today: a completed task stamped today, or a recurring occurrence dated today.
+    const doneToday = all.filter((t) => (t.done && t.completed && t.completed.slice(0, 10) === todayStr)
+      || t.instances.includes(todayStr)).length;
 
     const past = (d) => d && moment(d, ['YYYY-MM-DD', moment.ISO_8601]).isBefore(today, 'day');
     const overdue = active.filter((t) => past(t.due));
@@ -413,6 +420,10 @@ class AgendaController {
     dl.createSpan({ text: now.format('D') });
     dl.createSpan({ cls: 'fw-sep', text: '•' });
     dl.createSpan({ text: now.format('YYYY') });
+    if (doneToday) {
+      dl.createSpan({ cls: 'fw-sep', text: '•' });
+      dl.createSpan({ cls: 'fw-agenda__done', text: `${doneToday} done` });
+    }
     root.createDiv({ cls: 'fw-agenda__title', text: this.opts.title });
 
     // clickable, colored stat tiles that filter the list
@@ -469,9 +480,17 @@ class AgendaController {
       let any = false;
       if (unplanned.length) { this.renderSection(root, 'Unplanned', unplanned, cfg, false, true); any = true; }
       if (overdue.length) { this.renderSection(root, 'Overdue', overdue, cfg, true); any = true; }
+      // Show once: a task lands only in the first section it qualifies for; its other
+      // date still reads in the meta line, so nothing is lost by dropping the repeat.
+      const once = !!this.plugin.settings.showOnce;
+      const shown = new Set(overdue);
       for (let i = 0; i < this.opts.days; i++) {
         const day = today.clone().add(i, 'days');
-        const items = i === 0 ? todoToday : active.filter((t) => this.sameDay(t.scheduled, day) || this.sameDay(t.due, day));
+        let items = i === 0 ? todoToday : active.filter((t) => this.sameDay(t.scheduled, day) || this.sameDay(t.due, day));
+        if (once) {
+          items = items.filter((t) => !shown.has(t));
+          items.forEach((t) => shown.add(t));
+        }
         if (!items.length) continue;
         this.renderSection(root, day.format('dddd, MMM D'), items, cfg, false);
         any = true;
@@ -604,6 +623,16 @@ class AgendaSettingTab extends PluginSettingTab {
         .setValue(this.plugin.settings.metaIcons)
         .onChange(async (v) => {
           this.plugin.settings.metaIcons = v;
+          await this.plugin.saveSettings();
+        }));
+
+    new Setting(containerEl)
+      .setName('Show each task once')
+      .setDesc('A task scheduled for one day and due on a later one appears only on the first, with its due date still in the metadata. Off, it appears on both days, as in TaskNotes\' own agenda.')
+      .addToggle((t) => t
+        .setValue(this.plugin.settings.showOnce)
+        .onChange(async (v) => {
+          this.plugin.settings.showOnce = v;
           await this.plugin.saveSettings();
         }));
   }

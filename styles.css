@@ -30,6 +30,7 @@ body.theme-dark.forest-theme-light .fw-agenda {
   font-weight: 700;
 }
 .fw-agenda__dateline .fw-sep { margin: 0 7px; opacity: 0.5; }
+.fw-agenda__done { color: var(--fw-todo); }
 
 .fw-agenda__title {
   text-align: center;

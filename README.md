@@ -10,7 +10,7 @@ A display of all your task notes in a today's agenda window for. It gives you st
 
 ## Features
 
-- **Stat tiles** — Todo, Overdue and Unplanned counts; click one to filter.
+- **Stat tiles** — Todo, Overdue and Unplanned counts; click one to filter. Today's done count sits in the date line.
 - **Date-grouped list** — Unplanned, Overdue, then each upcoming day, all collapsible.
 - **Quick entry** — type a title and press Enter, or open the full TaskNotes creator.
 - **Interactive** — click a title to open the task, its ring to mark it done.
@@ -40,6 +40,14 @@ Optional settings inside the block:
 
 - `title` — the header shown under the date line (default: `Today's Agenda`).
 - `days` — how many days ahead to include (default: `14`).
+
+## Settings
+
+| Setting | |
+|---|---|
+| Open tasks in a new tab | On by default; mod-click always opens a new tab |
+| Icons in task metadata | Icons instead of `due:` / `scheduled:` labels |
+| Show each task once | Only on its first day, not again on its due day |
 
 ## How it reads your tasks
 
