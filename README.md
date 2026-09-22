@@ -43,11 +43,11 @@ Optional settings inside the block:
 
 ## How it reads your tasks
 
-It reads TaskNotes' own settings at runtime and falls back to TaskNotes defaults if they can't be read. A task is any note carrying your tag. Dates, status, and priority, projects, and tags come from your configured frontmatter fields. Creating and completing tasks writes standard TaskNotes frontmatter, which TaskNotes then re-indexes.
+It reads TaskNotes' own settings at runtime and falls back to TaskNotes defaults if they can't be read. A task is any note carrying your tag. Dates, status, and priority, projects, and tags come from your configured frontmatter fields. Creating and completing tasks goes through TaskNotes itself, so your creation defaults, natural-language dates and recurring tasks behave exactly as they do there. A task scheduled for a past day that's still open carries into today.
 
 ## Installation
 
-### From the community plugins browser (once approved)
+### From the community plugins browser
 
 Settings → Community plugins → Browse → search **TaskNotes Agenda Wrapper** → Install → Enable.
 

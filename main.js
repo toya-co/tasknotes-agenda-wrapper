@@ -22,6 +22,7 @@ const DEFAULT_FIELDS = {
   title: 'title', status: 'status', priority: 'priority', due: 'due',
   scheduled: 'scheduled', completedDate: 'completedDate', projects: 'projects',
   dateCreated: 'dateCreated', dateModified: 'dateModified', archiveTag: 'archived',
+  recurrence: 'recurrence', completeInstances: 'complete_instances',
 };
 const DEFAULT_STATUSES = [
   { value: 'none', label: 'None', color: '#cccccc', isCompleted: false },
@@ -83,6 +84,25 @@ function normDate(v) {
   if (v == null || v === '') return null;
   if (v instanceof Date) return moment(v).format('YYYY-MM-DD');
   return String(v);
+}
+
+// TaskNotes' NLP result → the task shape its API creates from. Mirrors TaskNotes'
+// own mapping for its "create from text" path, so quick entry and the TaskNotes
+// modal turn the same words into the same task.
+function taskFromParse(p, raw) {
+  const at = (d, t) => (t ? `${d}T${t}` : d);
+  const task = { title: (p.title || '').trim() || raw };
+  if (p.status) task.status = p.status;
+  if (p.priority) task.priority = p.priority;
+  if (p.dueDate) task.due = at(p.dueDate, p.dueTime);
+  if (p.scheduledDate) task.scheduled = at(p.scheduledDate, p.scheduledTime);
+  if (p.contexts && p.contexts.length) task.contexts = p.contexts;
+  if (p.projects && p.projects.length) task.projects = p.projects;
+  if (p.tags && p.tags.length) task.tags = p.tags.map((t) => String(t).replace(/^#/, ''));
+  if (p.details) task.details = p.details;
+  if (p.recurrence) task.recurrence = p.recurrence;
+  if (p.estimate > 0) task.timeEstimate = p.estimate;
+  return task;
 }
 
 function parseOptions(source) {
@@ -151,10 +171,20 @@ module.exports = class TaskNotesAgendaWrapper extends Plugin {
     const doneStatus = (statuses.find((x) => x.isCompleted) || { value: 'done' }).value;
     return {
       taskTag: (s.taskTag || 'task').replace(/^#/, ''),
+      archiveTag: String(fields.archiveTag || 'archived').replace(/^#/, ''),
       tasksFolder: s.tasksFolder || 'TaskNotes/Tasks',
       defaultStatus: s.defaultTaskStatus || 'open',
       fields, statusMap, prioMap, doneStatus,
     };
+  }
+
+  // TaskNotes' public runtime API (plugin.api, apiVersion 1). Writes go through it
+  // when it's there, so completion dates, recurrence, creation defaults and NLP all
+  // behave exactly as they do inside TaskNotes. Older TaskNotes → direct frontmatter.
+  tnApi() {
+    const tn = this.app.plugins.plugins.tasknotes;
+    const api = tn && tn.api;
+    return api && api.apiVersion >= 1 && api.tasks && api.recurring ? api : null;
   }
 
   getTasks(cfg) {
@@ -166,30 +196,59 @@ module.exports = class TaskNotesAgendaWrapper extends Plugin {
       const tags = collectTags(fm, cache);
       if (!tags.has(cfg.taskTag)) continue;
       const F = cfg.fields;
-      if (fm[F.archiveTag]) continue;
+      // TaskNotes archives by adding the archive tag; the property check covers hand-edited notes.
+      if (tags.has(cfg.archiveTag) || fm[F.archiveTag]) continue;
       const status = fm[F.status] || cfg.defaultStatus;
+      const scheduled = normDate(fm[F.scheduled]);
+      const recurring = !!fm[F.recurrence];
+      // A recurring task's current occurrence is its scheduled date; TaskNotes logs each
+      // completed occurrence in complete_instances and moves `scheduled` to the next one.
+      const instances = Array.isArray(fm[F.completeInstances]) ? fm[F.completeInstances].map(normDate) : [];
+      const instanceDone = recurring && !!scheduled && instances.includes(scheduled.slice(0, 10));
       out.push({
         file: f,
         title: fm[F.title] != null ? String(fm[F.title]) : f.basename,
         status,
         priority: fm[F.priority] || 'none',
         due: normDate(fm[F.due]),
-        scheduled: normDate(fm[F.scheduled]),
+        scheduled,
+        recurring,
         projects: linkNames(fm[F.projects]),
         tags: orderTags(tags, cfg.taskTag),
-        done: !!(cfg.statusMap[status] && cfg.statusMap[status].isCompleted),
+        done: instanceDone || !!(cfg.statusMap[status] && cfg.statusMap[status].isCompleted),
       });
     }
     return out;
   }
 
   async toggleStatus(task, cfg) {
+    const api = this.tnApi();
+    if (api) {
+      try {
+        // No date: TaskNotes resolves the occurrence itself (the scheduled one, or today
+        // for completion-anchored series), which is the occurrence this row shows.
+        if (task.recurring) await api.recurring.toggleCompleteInstance(task.file.path);
+        else if (task.done) await api.tasks.uncomplete(task.file.path);
+        else await api.tasks.complete(task.file.path);
+      } catch (e) {
+        console.error('[tasknotes-agenda-wrapper] status change failed', e);
+        new Notice('TaskNotes could not update this task.');
+      }
+      return;
+    }
     const F = cfg.fields;
     const nowDone = !task.done;
     await this.app.fileManager.processFrontMatter(task.file, (fm) => {
-      fm[F.status] = nowDone ? cfg.doneStatus : cfg.defaultStatus;
-      if (nowDone) fm[F.completedDate] = moment().format('YYYY-MM-DD');
-      else delete fm[F.completedDate];
+      if (task.recurring) {
+        // Log the occurrence rather than closing the whole series.
+        const day = (task.scheduled || moment().format('YYYY-MM-DD')).slice(0, 10);
+        const list = (Array.isArray(fm[F.completeInstances]) ? fm[F.completeInstances] : []).map(normDate);
+        fm[F.completeInstances] = nowDone ? [...new Set([...list, day])] : list.filter((d) => d !== day);
+      } else {
+        fm[F.status] = nowDone ? cfg.doneStatus : cfg.defaultStatus;
+        if (nowDone) fm[F.completedDate] = moment().format('YYYY-MM-DD');
+        else delete fm[F.completedDate];
+      }
       fm[F.dateModified] = moment().format();
     });
   }
@@ -264,6 +323,24 @@ module.exports = class TaskNotesAgendaWrapper extends Plugin {
   async createTask(rawTitle, cfg) {
     const title = (rawTitle || '').trim();
     if (!title) return;
+    const api = this.tnApi();
+    if (api && typeof api.tasks.create === 'function') {
+      // TaskNotes applies its own creation defaults (scheduled date, tags, folder,
+      // filename format) and, with natural-language input on, parses "tomorrow 3pm #home".
+      const tn = this.app.plugins.plugins.tasknotes;
+      let data = { title };
+      if (tn.settings && tn.settings.enableNaturalLanguageInput && api.nlp) {
+        try { data = taskFromParse(api.nlp.parse(title), title); } catch (e) { /* keep the literal title */ }
+      }
+      try {
+        await api.tasks.create(data);
+        new Notice(`Task created: ${data.title}`);
+      } catch (e) {
+        console.error('[tasknotes-agenda-wrapper] create failed', e);
+        new Notice('TaskNotes could not create this task.');
+      }
+      return;
+    }
     const folder = cfg.tasksFolder;
     try {
       if (!this.app.vault.getAbstractFileByPath(folder)) await this.app.vault.createFolder(folder);
@@ -317,9 +394,13 @@ class AgendaController {
     const active = this.plugin.getTasks(cfg).filter((t) => !t.done);
     const today = moment().startOf('day');
 
-    const overdue = active.filter((t) => t.due && moment(t.due, ['YYYY-MM-DD', moment.ISO_8601]).isBefore(today, 'day'));
+    const past = (d) => d && moment(d, ['YYYY-MM-DD', moment.ISO_8601]).isBefore(today, 'day');
+    const overdue = active.filter((t) => past(t.due));
     const unplanned = active.filter((t) => !t.due && !t.scheduled);
-    const todoToday = active.filter((t) => this.sameDay(t.scheduled, today) || this.sameDay(t.due, today));
+    // Scheduled for a day that's gone and still open: it carries into today rather than
+    // falling between sections. Overdue tasks already have a home, so they stay there.
+    const todoToday = active.filter((t) => this.sameDay(t.scheduled, today) || this.sameDay(t.due, today)
+      || (past(t.scheduled) && !past(t.due)));
 
     const el = this.containerEl;
     el.empty();
@@ -390,7 +471,7 @@ class AgendaController {
       if (overdue.length) { this.renderSection(root, 'Overdue', overdue, cfg, true); any = true; }
       for (let i = 0; i < this.opts.days; i++) {
         const day = today.clone().add(i, 'days');
-        const items = active.filter((t) => this.sameDay(t.scheduled, day) || this.sameDay(t.due, day));
+        const items = i === 0 ? todoToday : active.filter((t) => this.sameDay(t.scheduled, day) || this.sameDay(t.due, day));
         if (!items.length) continue;
         this.renderSection(root, day.format('dddd, MMM D'), items, cfg, false);
         any = true;
