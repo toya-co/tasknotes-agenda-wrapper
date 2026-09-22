@@ -3,7 +3,7 @@
 A display of all your task notes in a today's agenda window for. It gives you stats, date-grouped, quick task entry, and list for the sidebar or embedded.
 
 <p align="center">
-  <img src="./assets/agendawrapper.png" alt="Today's Agenda pane in the right sidebar beside the TaskNotes agenda view, showing stat tiles, unplanned and overdue sections, and upcoming days" />
+  <img src="./assets/agenda-1.3.0.png" alt="Today's Agenda pane in the right sidebar beside the TaskNotes agenda view, showing stat tiles, unplanned and overdue sections, and upcoming days" />
 </p>
 
 > Requires the [TaskNotes](https://github.com/callumalpass/tasknotes). plugin. This reads your TaskNotes tasks; it does not manage tasks on its own. 
