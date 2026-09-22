@@ -11,14 +11,22 @@
   --fw-todo: var(--color-green, #7aa06a);
   --fw-day: var(--color-green, var(--text-accent));
   --fw-unplanned-cat: var(--color-yellow, #e8c07d); /* unplanned category header = its box color */
+  /* stat tile surface — a step lighter than the pane, lit edges, a tight drop shadow.
+     Each % is how far toward the text color that part moves; the edge is the brightest. */
+  --fw-tile-bg: color-mix(in srgb, var(--text-normal) 7%, var(--background-secondary));
+  --fw-tile-edge: color-mix(in srgb, var(--text-normal) 17%, var(--background-secondary));
+  --fw-tile-shadow: 0 2px 5px rgba(0, 0, 0, 0.4);
 }
 
 /* light mode — also covers Forest Light picked while base mode is still dark */
 body.theme-light .fw-agenda,
 body.theme-dark.forest-theme-light .fw-agenda {
-  --fw-todo: #3cc45c;
+  --fw-todo: #2a8f42; /* ~4:1 on the white tile, level with the overdue red */
   --fw-day: #31a34c;
   --fw-unplanned-cat: #c69a51;
+  --fw-tile-bg: var(--background-primary);
+  --fw-tile-edge: var(--background-modifier-border);
+  --fw-tile-shadow: 0 1px 3px rgba(0, 0, 0, 0.08);
 }
 
 /* header — more air between the date line and the title */
@@ -30,7 +38,11 @@ body.theme-dark.forest-theme-light .fw-agenda {
   font-weight: 700;
 }
 .fw-agenda__dateline .fw-sep { margin: 0 7px; opacity: 0.5; }
-.fw-agenda__done { color: var(--fw-todo); }
+/* green pulled most of the way toward the date's muted gray — distinct, not loud */
+.fw-agenda__done {
+  color: var(--text-muted);
+  color: color-mix(in srgb, var(--fw-todo) 40%, var(--text-muted));
+}
 
 .fw-agenda__title {
   text-align: center;
@@ -46,36 +58,37 @@ body.theme-dark.forest-theme-light .fw-agenda {
   gap: 8px;
   margin-bottom: 15px;
 }
+/* tiles rest neutral with the color in the number; the tint only marks the active filter */
 .fw-stat {
   flex: 1;
-  border: 1px solid var(--background-modifier-border);
+  background: var(--fw-tile-bg);
+  border: 1px solid var(--fw-tile-edge);
   border-radius: 9px;
+  box-shadow: var(--fw-tile-shadow);
   padding: 6px 4px;
   text-align: center;
   cursor: pointer;
-  transition: transform 100ms ease, box-shadow 100ms ease, filter 100ms ease;
+  transition: transform 100ms ease, background 100ms ease, border-color 100ms ease;
 }
-.fw-stat:hover { transform: translateY(-1px); filter: brightness(1.08); }
-.fw-stat.is-active { box-shadow: 0 0 0 2px var(--interactive-accent); }
-.fw-stat__num { font-size: 19px; font-weight: 600; line-height: 1.1; }
-.fw-stat__label { font-size: 11px; color: var(--text-muted); }
+.fw-stat:hover { transform: translateY(-1px); }
+.fw-stat__num { font-size: 19px; font-weight: 600; line-height: 1.1; color: var(--fw-stat-color); }
+/* a step up from muted so the small labels hold up on the lifted tile; the % is the knob */
+.fw-stat__label {
+  font-size: 11px;
+  color: var(--text-muted);
+  color: color-mix(in srgb, var(--text-normal) 35%, var(--text-muted));
+}
 
-/* default tint per tile — the % is the knob; green needs more since it fights the green bg */
-.fw-stat--todo {
-  background: var(--background-secondary);
-  background: color-mix(in srgb, var(--fw-todo) 30%, var(--background-secondary));
+/* per tile: its color, and the active tint % — the knob; green needs more since it fights the green bg */
+.fw-stat--todo { --fw-stat-color: var(--fw-todo); --fw-stat-tint: 30%; }
+.fw-stat--overdue { --fw-stat-color: var(--color-red, #cc5a5a); --fw-stat-tint: 24%; }
+.fw-stat--unplanned { --fw-stat-color: var(--color-yellow, #e8c07d); --fw-stat-tint: 22%; }
+
+.fw-stat.is-active {
+  background: color-mix(in srgb, var(--fw-stat-color) var(--fw-stat-tint), var(--fw-tile-bg));
+  border-color: color-mix(in srgb, var(--fw-stat-color) 55%, transparent);
 }
-.fw-stat--todo .fw-stat__num { color: var(--fw-todo); }
-.fw-stat--overdue {
-  background: var(--background-secondary);
-  background: color-mix(in srgb, var(--color-red, #cc5a5a) 24%, var(--background-secondary));
-}
-.fw-stat--overdue .fw-stat__num { color: var(--color-red, #cc5a5a); }
-.fw-stat--unplanned {
-  background: var(--background-secondary);
-  background: color-mix(in srgb, var(--color-yellow, #e8c07d) 22%, var(--background-secondary));
-}
-.fw-stat--unplanned .fw-stat__num { color: var(--color-yellow, #e8c07d); }
+.fw-stat.is-active .fw-stat__label { color: var(--fw-stat-color); }
 
 /* new-task input */
 .fw-agenda__input {
