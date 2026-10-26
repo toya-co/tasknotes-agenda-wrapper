@@ -206,6 +206,7 @@ body.theme-dark.forest-theme-light .fw-agenda {
 .fw-task__title {
   font-size: 15px;
   line-height: 1.35;
+  min-height: 1.35em; /* an empty title would collapse, leaving nothing to click */
   color: var(--text-normal);
   cursor: pointer;
 }

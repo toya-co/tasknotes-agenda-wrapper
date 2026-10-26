@@ -48,10 +48,11 @@ Optional settings inside the block:
 | Open tasks in a new tab | On by default; mod-click always opens a new tab |
 | Icons in task metadata | Icons instead of `due:` / `scheduled:` labels |
 | Show each task once | Only on its first day, not again on its due day |
+| Statuses to exclude | Comma-separated; drops those tasks from the agenda and its counts |
 
 ## How it reads your tasks
 
-It reads TaskNotes' own settings at runtime and falls back to TaskNotes defaults if they can't be read. A task is any note carrying your tag. Dates, status, and priority, projects, and tags come from your configured frontmatter fields. Creating and completing tasks goes through TaskNotes itself, so your creation defaults, natural-language dates and recurring tasks behave exactly as they do there. A task scheduled for a past day that's still open carries into today.
+It reads TaskNotes' own settings at runtime and falls back to TaskNotes defaults if they can't be read. A task is any note carrying your task tag — or, if you identify tasks by a frontmatter property instead, any note whose property matches the value you set. Archived tasks are left out, along with anything in your excluded folders or your archive folder, so the agenda holds the same notes TaskNotes itself indexes. Dates, status, and priority, projects, and tags come from your configured frontmatter fields. Creating and completing tasks goes through TaskNotes itself, so your creation defaults, natural-language dates and recurring tasks behave exactly as they do there. A task scheduled for a past day that's still open carries into today.
 
 ## Installation
 

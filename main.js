@@ -6,7 +6,7 @@ const moment = obsidian.moment || window.moment;
 
 const VIEW_TYPE_AGENDA = 'tasknotes-agenda-view';
 
-const DEFAULT_SETTINGS = { metaIcons: false, openInNewTab: true, showOnce: false };
+const DEFAULT_SETTINGS = { metaIcons: false, openInNewTab: true, showOnce: false, excludeStatuses: '' };
 
 // Lucide names for the meta row when icons are on. Tags are deliberately absent —
 // they keep their pill background and read as labels, not as a field.
@@ -84,6 +84,65 @@ function normDate(v) {
   if (v == null || v === '') return null;
   if (v instanceof Date) return moment(v).format('YYYY-MM-DD');
   return String(v);
+}
+
+// TaskNotes resolves a title with `||`, not a null check, so an empty or whitespace
+// one falls through to the filename rather than rendering as nothing. Vaults still
+// carry empty titles from TaskNotes before 4.11, which stripped the field whenever
+// storeTitleInFilename was on (upstream #1608).
+function taskTitle(v, file) {
+  const s = v == null ? '' : String(v).trim();
+  return s || file.basename || 'Untitled task';
+}
+
+// A task carries the task tag or, when TaskNotes is set that way, an identifying
+// frontmatter property. Mirrors TaskNotes' own matcher down to the strict compare:
+// a configured value of '1' doesn't match the number 1, and with either the property
+// name or its value blank nothing counts as a task at all — an empty agenda, which
+// is what TaskNotes itself shows in that state.
+function matchesIdValue(v, want) {
+  if (typeof v === 'boolean') {
+    const t = want.toLowerCase();
+    if (t === 'true' || t === 'false') return v === (t === 'true');
+  }
+  return v === want;
+}
+
+function isTaskNote(fm, tags, cfg) {
+  if (cfg.idMethod !== 'property') return tags.has(cfg.taskTag);
+  if (!cfg.idProperty || !cfg.idValue) return false;
+  const v = fm[cfg.idProperty];
+  if (v === undefined) return false;
+  return Array.isArray(v) ? v.some((x) => matchesIdValue(x, cfg.idValue)) : matchesIdValue(v, cfg.idValue);
+}
+
+// TaskNotes' own folder matching: a folder covers itself and everything under it,
+// case-sensitive, with backslashes and stray slashes normalized away first.
+function normFolder(p) {
+  return String(p).replace(/\\/g, '/').replace(/^\/+/, '').replace(/\/+$/, '');
+}
+
+function folderList(v) {
+  const parts = Array.isArray(v) ? v : typeof v === 'string' ? v.split(',') : [];
+  return [...new Set(parts.map((p) => normFolder(p.trim())).filter((p) => p.length > 0))];
+}
+
+function inFolders(path, folders) {
+  const p = normFolder(path);
+  return folders.some((f) => p === f || p.startsWith(`${f}/`));
+}
+
+function excludedStatus(status, cfg) {
+  return cfg.excludedStatuses.has(String(status == null ? '' : status).trim().toLowerCase());
+}
+
+// The archive folder is a template, so a placeholder in it makes the path unknowable
+// from settings alone — `TaskNotes/{{year}}/Archive` would otherwise match as
+// `TaskNotes/` and swallow the whole tasks tree. Archiving writes the archive tag
+// either way, so dropping the folder check there loses nothing.
+function literalFolder(tpl) {
+  const s = String(tpl || '').trim();
+  return s.includes('{{') ? '' : s;
 }
 
 // TaskNotes' NLP result → the task shape its API creates from. Mirrors TaskNotes'
@@ -169,9 +228,25 @@ module.exports = class TaskNotesAgendaWrapper extends Plugin {
     const statusMap = {}; statuses.forEach((x) => { statusMap[x.value] = x; });
     const prioMap = {}; priorities.forEach((x) => { prioMap[x.value] = x; });
     const doneStatus = (statuses.find((x) => x.isCompleted) || { value: 'done' }).value;
+    // Typed as stored values ('cancelled') or as the labels TaskNotes shows ('In progress').
+    const excludedStatuses = new Set();
+    String(this.settings.excludeStatuses || '').split(',').forEach((raw) => {
+      const name = raw.trim().toLowerCase();
+      if (!name) return;
+      excludedStatuses.add(name);
+      statuses.forEach((x) => {
+        if (String(x.label || '').toLowerCase() === name) excludedStatuses.add(String(x.value).toLowerCase());
+      });
+    });
     return {
       taskTag: (s.taskTag || 'task').replace(/^#/, ''),
+      idMethod: s.taskIdentificationMethod === 'property' ? 'property' : 'tag',
+      idProperty: String(s.taskPropertyName || '').trim(),
+      idValue: String(s.taskPropertyValue || '').trim(),
       archiveTag: String(fields.archiveTag || 'archived').replace(/^#/, ''),
+      archiveFolders: s.moveArchivedTasks ? folderList(literalFolder(s.archiveFolder)) : [],
+      excludedFolders: folderList(s.excludedFolders),
+      excludedStatuses,
       tasksFolder: s.tasksFolder || 'TaskNotes/Tasks',
       defaultStatus: s.defaultTaskStatus || 'open',
       fields, statusMap, prioMap, doneStatus,
@@ -190,15 +265,21 @@ module.exports = class TaskNotesAgendaWrapper extends Plugin {
   getTasks(cfg) {
     const out = [];
     for (const f of this.app.vault.getMarkdownFiles()) {
+      // TaskNotes keeps these out of its own index, so they aren't tasks here either.
+      if (inFolders(f.path, cfg.excludedFolders)) continue;
       const cache = this.app.metadataCache.getFileCache(f);
       if (!cache) continue;
       const fm = cache.frontmatter || {};
       const tags = collectTags(fm, cache);
-      if (!tags.has(cfg.taskTag)) continue;
+      if (!isTaskNote(fm, tags, cfg)) continue;
       const F = cfg.fields;
-      // TaskNotes archives by adding the archive tag; the property check covers hand-edited notes.
+      // TaskNotes archives by adding the archive tag; the property check covers hand-edited
+      // notes, and the folder check one moved there by something that wrote neither.
       if (tags.has(cfg.archiveTag) || fm[F.archiveTag]) continue;
+      if (inFolders(f.path, cfg.archiveFolders)) continue;
       const status = fm[F.status] || cfg.defaultStatus;
+      // Dropped here rather than at render time so the stat tiles and done count agree.
+      if (excludedStatus(status, cfg)) continue;
       const scheduled = normDate(fm[F.scheduled]);
       const recurring = !!fm[F.recurrence];
       // A recurring task's current occurrence is its scheduled date; TaskNotes logs each
@@ -207,7 +288,7 @@ module.exports = class TaskNotesAgendaWrapper extends Plugin {
       const instanceDone = recurring && !!scheduled && instances.includes(scheduled.slice(0, 10));
       out.push({
         file: f,
-        title: fm[F.title] != null ? String(fm[F.title]) : f.basename,
+        title: taskTitle(fm[F.title], f),
         status,
         priority: fm[F.priority] || 'none',
         due: normDate(fm[F.due]),
@@ -352,8 +433,13 @@ module.exports = class TaskNotesAgendaWrapper extends Plugin {
     while (this.app.vault.getAbstractFileByPath(path)) path = `${folder}/${safe} ${++n}.md`;
     const F = cfg.fields;
     const now = moment().format();
+    // Under property identification the task tag means nothing to TaskNotes, so a
+    // note carrying it would never be indexed — write what identifies a task instead.
+    const ident = cfg.idMethod === 'property' && cfg.idProperty && cfg.idValue
+      ? [`${cfg.idProperty}: ${JSON.stringify(cfg.idValue)}`]
+      : ['tags:', `  - ${cfg.taskTag}`];
     const body = [
-      '---', 'tags:', `  - ${cfg.taskTag}`,
+      '---', ...ident,
       `${F.title}: ${JSON.stringify(title)}`,
       `${F.status}: ${cfg.defaultStatus}`,
       `${F.dateCreated}: ${now}`,
@@ -634,6 +720,19 @@ class AgendaSettingTab extends PluginSettingTab {
         .onChange(async (v) => {
           this.plugin.settings.showOnce = v;
           await this.plugin.saveSettings();
+        }));
+
+    // Saving writes data.json and re-renders every agenda, so not on every keystroke.
+    const saveExcluded = debounce(() => this.plugin.saveSettings(), 600);
+    new Setting(containerEl)
+      .setName('Statuses to exclude')
+      .setDesc('Comma-separated. These tasks are left out of the agenda and its counts entirely — for statuses like "cancelled" that TaskNotes doesn’t mark as completed, so nothing else filters them out. Labels and stored values both work.')
+      .addText((t) => t
+        .setPlaceholder('cancelled, obsolete')
+        .setValue(this.plugin.settings.excludeStatuses)
+        .onChange((v) => {
+          this.plugin.settings.excludeStatuses = v;
+          saveExcluded();
         }));
   }
 }
