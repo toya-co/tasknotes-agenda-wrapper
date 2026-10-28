@@ -44,39 +44,12 @@ body.theme-dark.forest-theme-light .fw-agenda {
   color: color-mix(in srgb, var(--fw-todo) 40%, var(--text-muted));
 }
 
-.fw-agenda__title-row {
-  position: relative;
-  margin-bottom: 20px;
-}
 .fw-agenda__title {
   text-align: center;
   font-size: 23px;
   font-weight: 700;
   color: var(--text-normal);
-  margin-bottom: 0;
-}
-.fw-agenda__events-toggle {
-  position: absolute;
-  right: 0;
-  top: 50%;
-  transform: translateY(-50%);
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  width: 28px;
-  height: 28px;
-  border-radius: 6px;
-  color: var(--text-muted);
-  cursor: pointer;
-  transition: color 120ms ease, background 120ms ease;
-}
-.fw-agenda__events-toggle svg { width: 16px; height: 16px; }
-.fw-agenda__events-toggle:hover {
-  color: var(--text-normal);
-  background: var(--background-modifier-hover);
-}
-.fw-agenda__events-toggle.is-active {
-  color: var(--interactive-accent);
+  margin-bottom: 20px;
 }
 
 /* stat tiles — colored, clickable, active on select */
@@ -88,6 +61,7 @@ body.theme-dark.forest-theme-light .fw-agenda {
 /* tiles rest neutral with the color in the number; the tint only marks the active filter */
 .fw-stat {
   flex: 1;
+  min-width: 0;
   background: var(--fw-tile-bg);
   border: 1px solid var(--fw-tile-edge);
   border-radius: 9px;
@@ -110,6 +84,7 @@ body.theme-dark.forest-theme-light .fw-agenda {
 .fw-stat--todo { --fw-stat-color: var(--fw-todo); --fw-stat-tint: 30%; }
 .fw-stat--overdue { --fw-stat-color: var(--color-red, #cc5a5a); --fw-stat-tint: 24%; }
 .fw-stat--unplanned { --fw-stat-color: var(--color-yellow, #e8c07d); --fw-stat-tint: 22%; }
+.fw-stat--events { --fw-stat-color: var(--color-blue, #6366f1); --fw-stat-tint: 26%; }
 
 .fw-stat.is-active {
   background: color-mix(in srgb, var(--fw-stat-color) var(--fw-stat-tint), var(--fw-tile-bg));

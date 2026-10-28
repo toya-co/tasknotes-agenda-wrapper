@@ -779,9 +779,8 @@ class AgendaController {
     this.plugin = plugin;
     this.containerEl = containerEl;
     this.opts = opts;
-    this.filter = null; // null | 'todo' | 'overdue' | 'unplanned'
+    this.filter = null; // null | 'todo' | 'overdue' | 'unplanned' | 'events'
     this.collapsed = new Set(); // section labels the user has collapsed
-    this.eventsVisible = true; // session toggle; only relevant when feature is on
   }
 
   relDate(dateStr) {
@@ -847,7 +846,9 @@ class AgendaController {
       || t.instances.includes(todayStr)).length;
 
     const featureOn = this.plugin.showEventsEnabled(this.opts);
-    const showEvents = featureOn && this.eventsVisible;
+    const showEvents = featureOn;
+    // The tile is gone when the feature is off, so don't strand the filter on it.
+    if (!featureOn && this.filter === 'events') this.filter = null;
 
     let eventBuckets = new Map();
     if (showEvents) {
@@ -885,23 +886,7 @@ class AgendaController {
       dl.createSpan({ cls: 'fw-agenda__done', text: `${doneToday} done` });
     }
 
-    const titleRow = root.createDiv({ cls: 'fw-agenda__title-row' });
-    titleRow.createDiv({ cls: 'fw-agenda__title', text: this.opts.title });
-    if (featureOn) {
-      const btn = titleRow.createDiv({
-        cls: 'fw-agenda__events-toggle' + (this.eventsVisible ? ' is-active' : ''),
-        attr: {
-          'aria-label': this.eventsVisible ? 'Hide calendar events' : 'Show calendar events',
-          role: 'button',
-        },
-      });
-      setIcon(btn, 'calendar');
-      btn.addEventListener('click', (e) => {
-        e.stopPropagation();
-        this.eventsVisible = !this.eventsVisible;
-        this.render();
-      });
-    }
+    root.createDiv({ cls: 'fw-agenda__title', text: this.opts.title });
 
     // clickable, colored stat tiles that filter the list
     const stats = root.createDiv({ cls: 'fw-agenda__stats' });
@@ -912,10 +897,10 @@ class AgendaController {
       t.setAttribute('aria-label', `Show ${label.toLowerCase()}`);
       t.addEventListener('click', () => { this.filter = this.filter === key ? null : key; this.render(); });
     };
-    // Todo count matches the Todo filter list (tasks + today's events when visible).
-    tile(todoToday.length + todayEvents.length, 'Todo', 'todo');
+    tile(todoToday.length, 'Todo', 'todo');
     tile(overdue.length, 'Overdue', 'overdue');
     tile(unplanned.length, 'Unplanned', 'unplanned');
+    if (featureOn) tile(todayEvents.length, 'Events', 'events');
 
     // new-task input
     const inputWrap = root.createDiv({ cls: 'fw-agenda__input' });
@@ -949,10 +934,13 @@ class AgendaController {
 
     // list — filtered by the active tile, or the full agenda
     if (this.filter === 'todo') {
-      const todayItems = todoToday.concat(todayEvents);
-      todayItems.length
-        ? this.renderSection(root, 'Today', todayItems, cfg, false)
+      todoToday.length
+        ? this.renderSection(root, 'Today', todoToday, cfg, false)
         : this.empty(root, 'No tasks for today.');
+    } else if (this.filter === 'events') {
+      todayEvents.length
+        ? this.renderSection(root, 'Events', todayEvents, cfg, false)
+        : this.empty(root, 'Nothing on the calendar today.');
     } else if (this.filter === 'overdue') {
       overdue.length ? this.renderSection(root, 'Overdue', overdue, cfg, true) : this.empty(root, 'Nothing overdue.');
     } else if (this.filter === 'unplanned') {
