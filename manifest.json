@@ -1,7 +1,7 @@
 {
   "id": "tasknotes-agenda-wrapper",
   "name": "TaskNotes Agenda Wrapper",
-  "version": "1.4.0",
+  "version": "1.5.0",
   "minAppVersion": "1.4.0",
   "description": "A Today's Agenda window for TaskNotes.",
   "author": "Toyoco.",

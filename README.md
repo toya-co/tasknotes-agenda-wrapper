@@ -10,7 +10,7 @@ A display of all your task notes in a today's agenda window for. It gives you st
 
 ## Features
 
-- **Stat tiles** — Todo, Overdue and Unplanned counts; click one to filter. Today's done count sits in the date line.
+- **Stat tiles** — Todo, Overdue, Unplanned, and Events when calendars are on; click one to filter. Today's done count sits in the date line.
 - **Date-grouped list** — Unplanned, Overdue, then each upcoming day, all collapsible.
 - **Quick entry** — type a title and press Enter, or open the full TaskNotes creator.
 - **Interactive** — click a title to open the task, its ring to mark it done.
